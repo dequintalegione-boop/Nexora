@@ -11,6 +11,9 @@ export function TaskDialog() {
   const updateTask = useNexora((s) => s.updateTask)
   const setTaskStatus = useNexora((s) => s.setTaskStatus)
   const archiveTask = useNexora((s) => s.archiveTask)
+  const setTaskParent = useNexora((s) => s.setTaskParent)
+  const addTaskDependency = useNexora((s) => s.addTaskDependency)
+  const removeTaskDependency = useNexora((s) => s.removeTaskDependency)
 
   const task = tasks.find((t) => t.id === taskId)
   if (!task) return null
@@ -46,6 +49,72 @@ export function TaskDialog() {
           </div>
         </div>
 
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-muted">Запланировано на</label>
+            <Input
+              type="date"
+              value={task.scheduledDate ?? ""}
+              onChange={(e) => updateTask(task.id, { scheduledDate: e.target.value || undefined })}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted">Срок выполнения</label>
+            <Input
+              type="date"
+              value={task.dueDate ?? ""}
+              onChange={(e) => updateTask(task.id, { dueDate: e.target.value || undefined })}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted">Оценка, минут</label>
+            <Input
+              type="number"
+              min={0}
+              value={task.estimatedMinutes ?? ""}
+              onChange={(e) => updateTask(task.id, { estimatedMinutes: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)) })}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted">Родительская задача</label>
+            <Select
+              className="w-full"
+              value={task.parentId ?? ""}
+              onChange={(e) => setTaskParent(task.id, e.target.value || undefined)}
+            >
+              <option value="">Нет</option>
+              {tasks.filter((item) => item.id !== task.id && !item.deletedAt).map((item) => (
+                <option key={item.id} value={item.id}>{item.title}</option>
+              ))}
+            </Select>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs text-muted">Зависит от (сначала нужно выполнить)</label>
+          <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-white/10 p-2">
+            {tasks.filter((item) => item.id !== task.id && !item.deletedAt && !item.archived).map((item) => (
+              <label key={item.id} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={(task.dependsOn ?? []).includes(item.id)}
+                  onChange={(e) => e.target.checked
+                    ? addTaskDependency(task.id, item.id)
+                    : removeTaskDependency(task.id, item.id)}
+                />
+                <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                {item.status === "done" ? <span className="text-xs text-emerald-400">Готово</span> : <span className="text-xs text-muted">Не выполнена</span>}
+              </label>
+            ))}
+            {tasks.filter((item) => item.id !== task.id && !item.deletedAt && !item.archived).length === 0 && (
+              <p className="text-xs text-muted">Пока нет других активных задач</p>
+            )}
+          </div>
+          {(task.dependsOn ?? []).some((id) => tasks.find((item) => item.id === id)?.status !== "done") && (
+            <p className="text-xs text-amber-400">Задача заблокирована незавершёнными зависимостями</p>
+          )}
+        </div>
+
         <div>
           <label className="text-xs text-muted">Описание</label>
           <Textarea
@@ -54,6 +123,30 @@ export function TaskDialog() {
             rows={3}
           />
         </div>
+
+        {tasks.some((item) => item.parentId === task.id) && (
+          <div className="rounded-lg border border-white/10 p-3">
+            <p className="mb-2 text-xs text-muted">Подзадачи</p>
+            <div className="space-y-1">
+              {tasks.filter((item) => item.parentId === task.id).map((child) => (
+                <button key={child.id} type="button" className="block w-full truncate text-left text-sm hover:text-teal-300" onClick={() => setTaskId(child.id)}>
+                  {child.status === "done" ? "✓ " : "○ "}{child.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {task.history && task.history.length > 0 && (
+          <details className="text-xs text-muted">
+            <summary className="cursor-pointer">История изменений ({task.history.length})</summary>
+            <ul className="mt-2 max-h-28 space-y-1 overflow-y-auto">
+              {[...task.history].reverse().map((entry, index) => (
+                <li key={index}>{new Date(entry.at).toLocaleString("ru-RU")} — {entry.change}</li>
+              ))}
+            </ul>
+          </details>
+        )}
 
         <div className="flex justify-between pt-2">
           <Button variant="ghost" onClick={() => { archiveTask(task.id); setTaskId(null) }}>
