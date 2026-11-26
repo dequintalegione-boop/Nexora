@@ -1,6 +1,7 @@
 import { useNexora } from "@/lib/nexora/store"
 import { useUI } from "@/lib/nexora/ui-store"
 import { STATUS_LABEL, PRIORITY_LABEL } from "@/lib/nexora/copy"
+import type { RecurrenceFrequency } from "@/lib/nexora/types"
 import type { TaskStatus, Priority } from "@/lib/nexora/types"
 import { Button, Card, Input, Select, Textarea } from "./ui"
 import { getDependencyState, getTaskChildren } from "@/lib/nexora/task-logic"
@@ -91,6 +92,60 @@ export function TaskDialog() {
               ))}
             </Select>
           </div>
+        </div>
+
+        <div className="space-y-2 rounded-lg border border-white/10 p-3">
+          <label className="text-xs text-muted">Повторение задачи</label>
+          <div className="grid grid-cols-2 gap-2">
+            <Select
+              className="w-full"
+              value={task.recurrenceRule?.frequency ?? task.repeat ?? ""}
+              onChange={(e) => {
+                const frequency = e.target.value as RecurrenceFrequency | ""
+                updateTask(task.id, {
+                  repeat: frequency === "daily" || frequency === "weekly" ? frequency : undefined,
+                  recurrenceRule: frequency
+                    ? { frequency, interval: task.recurrenceRule?.interval ?? 1, until: task.recurrenceRule?.until }
+                    : undefined,
+                })
+              }}
+            >
+              <option value="">Не повторять</option>
+              <option value="daily">Каждый день</option>
+              <option value="weekly">Каждую неделю</option>
+              <option value="monthly">Каждый месяц</option>
+              <option value="yearly">Каждый год</option>
+            </Select>
+            {task.recurrenceRule && (
+              <Input
+                type="number"
+                min={1}
+                max={365}
+                aria-label="Интервал повторения"
+                value={task.recurrenceRule.interval}
+                onChange={(e) => updateTask(task.id, {
+                  recurrenceRule: {
+                    ...task.recurrenceRule!,
+                    interval: Math.max(1, Number(e.target.value) || 1),
+                  },
+                })}
+              />
+            )}
+          </div>
+          {task.recurrenceRule && (
+            <div>
+              <label className="text-xs text-muted">Повторять до (необязательно)</label>
+              <Input
+                className="w-full"
+                type="date"
+                value={task.recurrenceRule.until ?? ""}
+                onChange={(e) => updateTask(task.id, {
+                  recurrenceRule: { ...task.recurrenceRule!, until: e.target.value || undefined },
+                })}
+              />
+              <p className="mt-1 text-xs text-muted">Следующая задача создаётся автоматически после завершения текущей.</p>
+            </div>
+          )}
         </div>
 
         <div className="space-y-2">
