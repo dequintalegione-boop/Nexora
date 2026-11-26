@@ -150,7 +150,10 @@ export interface TimeSession {
 
 export interface ActiveTimer {
   kind: SessionKind
+  /** Start of the current running segment. Reset when a paused timer resumes. */
   startedAt: string
+  /** Original start time of the whole session, preserved across pauses. */
+  sessionStartedAt?: string
   taskId?: string
   label?: string
   pausedAt?: string
