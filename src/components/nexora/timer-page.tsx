@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Clock3, Pause, Play, RotateCcw, Square } from "lucide-react"
+import { Clock3, Pause, Play, Square } from "lucide-react"
 import { useNexora } from "@/lib/nexora/store"
 import type { SessionKind } from "@/lib/nexora/types"
 import { Button, Card } from "./ui"
@@ -32,7 +32,7 @@ export function TimerPage() {
     if (!activeTimer || activeTimer.pausedAt) return
     const interval = window.setInterval(() => setNow(Date.now()), 250)
     return () => window.clearInterval(interval)
-  }, [activeTimer?.startedAt, activeTimer?.pausedAt, activeTimer])
+  }, [activeTimer?.startedAt, activeTimer?.pausedAt])
 
   const elapsedMs = activeTimer
     ? Math.max(
@@ -60,7 +60,7 @@ export function TimerPage() {
         </div>
         <h1 className="text-2xl font-semibold">Таймер</h1>
         <p className="text-sm text-muted">
-          Время сохраняется автоматически и не сбрасывается при перезагрузке страницы.
+          Активная сессия сохраняется автоматически и восстанавливается после перезагрузки.
         </p>
       </header>
 
@@ -110,14 +110,9 @@ export function TimerPage() {
                 </span>
               </Button>
               <Button onClick={handleStop}>
-                <span className="inline-flex items-center gap-2"><Square size={15} />Завершить</span>
+                <span className="inline-flex items-center gap-2"><Square size={15} />Завершить и сохранить</span>
               </Button>
             </>
-          )}
-          {activeTimer && (
-            <Button variant="ghost" onClick={handleStop}>
-              <span className="inline-flex items-center gap-2"><RotateCcw size={15} />Завершить и сохранить</span>
-            </Button>
           )}
         </div>
       </Card>
