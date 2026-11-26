@@ -95,3 +95,28 @@ export function PageHeader({
     </header>
   )
 }
+
+export function Meter({
+  value,
+  className,
+}: {
+  value: number
+  className?: string
+}) {
+  const safeValue = Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0
+
+  return (
+    <div
+      className={cn("h-2 w-full overflow-hidden rounded-full bg-white/10", className)}
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={safeValue}
+    >
+      <div
+        className="h-full rounded-full bg-teal-400 transition-[width] duration-300"
+        style={{ width: `${safeValue}%` }}
+      />
+    </div>
+  )
+}
