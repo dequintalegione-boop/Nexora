@@ -20,7 +20,7 @@ export function TasksPage() {
   const setTaskId = useUI((s) => s.setTaskId)
 
   const [view, setView] = useState<"active" | "archive" | "trash">("active")
-  const [layout, setLayout] = useState<"list" | "kanban">("list")
+  const [layout, setLayout] = useState<"list" | "table" | "kanban">("list")
   const [quickFilter, setQuickFilter] = useState<"all" | "today" | "inbox" | "overdue" | "week" | "unblocked">("all")
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null)
   const [filter, setFilter] = useState<"all" | TaskStatus>("all")
@@ -98,6 +98,7 @@ export function TasksPage() {
         {view === "active" && (
           <div className="flex gap-1 rounded-lg border border-white/10 p-1">
             <Button size="sm" variant={layout === "list" ? "primary" : "ghost"} onClick={() => setLayout("list")}>Список</Button>
+            <Button size="sm" variant={layout === "table" ? "primary" : "ghost"} onClick={() => setLayout("table")}>Таблица</Button>
             <Button size="sm" variant={layout === "kanban" ? "primary" : "ghost"} onClick={() => setLayout("kanban")}>Канбан</Button>
           </div>
         )}
@@ -193,6 +194,44 @@ export function TasksPage() {
             )
           })}
         </div>
+      ) : view === "active" && layout === "table" ? (
+        <Card className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-left text-sm">
+            <thead className="border-b border-white/10 text-xs text-muted">
+              <tr>
+                <th className="px-3 py-3 font-medium">Задача</th>
+                <th className="px-3 py-3 font-medium">Статус</th>
+                <th className="px-3 py-3 font-medium">Приоритет</th>
+                <th className="px-3 py-3 font-medium">Срок</th>
+                <th className="px-3 py-3 font-medium">Проекты</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {filtered.map((task) => {
+                const linkedProjects = projects.filter((project) =>
+                  (task.projectIds ?? (task.projectId ? [task.projectId] : [])).includes(project.id)
+                )
+                return (
+                  <tr key={task.id} className="cursor-pointer hover:bg-white/5" onClick={() => setTaskId(task.id)}>
+                    <td className="px-3 py-3">
+                      <div className="font-medium">{task.title}</div>
+                      {getDependencyState(task, tasks).isBlocked && <span className="text-xs text-amber-400">Заблокирована</span>}
+                    </td>
+                    <td className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
+                      <Select className="w-36" value={task.status} onChange={(event) => setTaskStatus(task.id, event.target.value as TaskStatus)}>
+                        {Object.entries(STATUS_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                      </Select>
+                    </td>
+                    <td className="px-3 py-3"><Badge priority={task.priority}>{PRIORITY_LABEL[task.priority]}</Badge></td>
+                    <td className="px-3 py-3 tabular-nums text-muted">{task.dueDate ?? "—"}</td>
+                    <td className="px-3 py-3 text-muted">{linkedProjects.map((project) => project.title).join(", ") || "—"}</td>
+                  </tr>
+                )
+              })}
+              {filtered.length === 0 && <tr><td colSpan={5} className="px-3 py-8 text-center text-muted">Нет задач по фильтру</td></tr>}
+            </tbody>
+          </table>
+        </Card>
       ) : (
         <div className="space-y-2">
           {filtered.length === 0 && (
