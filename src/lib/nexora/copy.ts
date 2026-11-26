@@ -20,7 +20,12 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
 }
 
 export function getTaskStatusLabels(settings?: Pick<Settings, "taskStatusLabels">): Record<TaskStatus, string> {
-  return { ...STATUS_LABEL, ...(settings?.taskStatusLabels ?? {}) }
+  return Object.fromEntries(
+    Object.entries(STATUS_LABEL).map(([key, fallback]) => [
+      key,
+      settings?.taskStatusLabels?.[key as TaskStatus]?.trim() || fallback,
+    ])
+  ) as Record<TaskStatus, string>
 }
 
 export const TASK_STATUSES: TaskStatus[] = [
@@ -41,7 +46,12 @@ export const PRIORITY_LABEL: Record<Priority, string> = {
 }
 
 export function getTaskPriorityLabels(settings?: Pick<Settings, "taskPriorityLabels">): Record<Priority, string> {
-  return { ...PRIORITY_LABEL, ...(settings?.taskPriorityLabels ?? {}) }
+  return Object.fromEntries(
+    Object.entries(PRIORITY_LABEL).map(([key, fallback]) => [
+      key,
+      settings?.taskPriorityLabels?.[key as Priority]?.trim() || fallback,
+    ])
+  ) as Record<Priority, string>
 }
 
 export const PRIORITIES: Priority[] = ["none", "low", "medium", "high", "critical"]
