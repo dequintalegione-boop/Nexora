@@ -28,6 +28,7 @@ export default function App() {
           <Route path="goals" element={<Goals />} />
           <Route path="journal" element={<Journal />} />
           <Route path="habits" element={<Habits />} />
+          <Route path="analytics" element={<Analytics />} />
           <Route path="calendar" element={<Calendar />} />
           <Route path="timer" element={<Timer />} />
           <Route path="settings" element={<Placeholder />} />
