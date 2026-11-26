@@ -43,9 +43,5 @@ child.on("error", (error) => {
 });
 
 child.on("exit", (code, signal) => {
-  if (signal) {
-    process.kill(process.pid, signal);
-    return;
-  }
-  process.exitCode = code ?? 1;
+  process.exitCode = code ?? (signal ? 1 : 0);
 });
