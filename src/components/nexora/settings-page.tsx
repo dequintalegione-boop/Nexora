@@ -1,5 +1,6 @@
 import { useNexora } from "@/lib/nexora/store"
-import type { ThemeMode } from "@/lib/nexora/types"
+import type { ThemeMode, TaskStatus, Priority } from "@/lib/nexora/types"
+import { STATUS_LABEL, PRIORITY_LABEL } from "@/lib/nexora/copy"
 import { Button, Card, Input, Select } from "./ui"
 
 export function SettingsPage() {
@@ -81,6 +82,31 @@ export function SettingsPage() {
         </div>
       </Card>
 
+      <Card className="p-4 space-y-4">
+        <div>
+          <h2 className="font-medium">Статусы и приоритеты задач</h2>
+          <p className="mt-1 text-xs text-muted">Можно переименовать стандартные статусы и уровни приоритета. Изменения применяются к задачам, фильтрам и доске.</p>
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium">Названия статусов</h3>
+          {(Object.entries(STATUS_LABEL) as [TaskStatus, string][]).map(([key, fallback]) => (
+            <div key={key} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] items-center gap-3">
+              <label className="text-sm text-muted" htmlFor={"task-status-" + key}>{fallback}</label>
+              <Input id={"task-status-" + key} value={settings.taskStatusLabels?.[key] ?? fallback} onChange={(event) => updateSettings({ taskStatusLabels: { ...settings.taskStatusLabels, [key]: event.target.value } })} />
+            </div>
+          ))}
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium">Названия приоритетов</h3>
+          {(Object.entries(PRIORITY_LABEL) as [Priority, string][]).map(([key, fallback]) => (
+            <div key={key} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] items-center gap-3">
+              <label className="text-sm text-muted" htmlFor={"task-priority-" + key}>{fallback}</label>
+              <Input id={"task-priority-" + key} value={settings.taskPriorityLabels?.[key] ?? fallback} onChange={(event) => updateSettings({ taskPriorityLabels: { ...settings.taskPriorityLabels, [key]: event.target.value } })} />
+            </div>
+          ))}
+        </div>
+        <Button size="sm" variant="secondary" onClick={() => updateSettings({ taskStatusLabels: {}, taskPriorityLabels: {} })}>Сбросить названия</Button>
+      </Card>
       <Card className="p-4 space-y-3">
         <h2 className="font-medium">Данные</h2>
         <div className="flex flex-wrap gap-2">
