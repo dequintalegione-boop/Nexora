@@ -10,6 +10,7 @@ export function TaskDialog() {
   const taskId = useUI((s) => s.taskId)
   const setTaskId = useUI((s) => s.setTaskId)
   const tasks = useNexora((s) => s.tasks)
+  const addTask = useNexora((s) => s.addTask)
   const projects = useNexora((s) => s.projects)
   const updateTask = useNexora((s) => s.updateTask)
   const setTaskStatus = useNexora((s) => s.setTaskStatus)
@@ -250,18 +251,31 @@ export function TaskDialog() {
           />
         </div>
 
-        {children.length > 0 && (
-          <div className="rounded-lg border border-white/10 p-3">
-            <p className="mb-2 text-xs text-muted">Подзадачи</p>
-            <div className="space-y-1">
-              {children.map((child) => (
-                <button key={child.id} type="button" className="block w-full truncate text-left text-sm hover:text-teal-300" onClick={() => setTaskId(child.id)}>
-                  {child.status === "done" ? "✓ " : "○ "}{child.title}
-                </button>
-              ))}
-            </div>
+        <div className="rounded-lg border border-white/10 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs text-muted">Подзадачи ({children.length})</p>
+            <Button size="sm" variant="secondary" onClick={() => {
+              const childId = addTask({
+                title: "Новая подзадача",
+                parentId: task.id,
+                projectId: task.projectId,
+                projectIds: task.projectIds,
+                directionId: task.directionId,
+              })
+              setTaskId(childId)
+            }}>
+              + Подзадача
+            </Button>
           </div>
-        )}
+          <div className="space-y-1">
+            {children.map((child) => (
+              <button key={child.id} type="button" className="block w-full truncate text-left text-sm hover:text-teal-300" onClick={() => setTaskId(child.id)}>
+                {child.status === "done" ? "✓ " : "○ "}{child.title}
+              </button>
+            ))}
+            {children.length === 0 && <p className="text-xs text-muted">Пока нет подзадач</p>}
+          </div>
+        </div>
 
         {task.history && task.history.length > 0 && (
           <details className="text-xs text-muted">
