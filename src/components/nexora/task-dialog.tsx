@@ -14,6 +14,7 @@ export function TaskDialog() {
   const updateTask = useNexora((s) => s.updateTask)
   const setTaskStatus = useNexora((s) => s.setTaskStatus)
   const archiveTask = useNexora((s) => s.archiveTask)
+  const startTimer = useNexora((s) => s.startTimer)
   const setTaskParent = useNexora((s) => s.setTaskParent)
   const addTaskDependency = useNexora((s) => s.addTaskDependency)
   const removeTaskDependency = useNexora((s) => s.removeTaskDependency)
@@ -79,6 +80,7 @@ export function TaskDialog() {
               value={task.estimatedMinutes ?? ""}
               onChange={(e) => updateTask(task.id, { estimatedMinutes: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)) })}
             />
+            <p className="mt-1 text-xs text-muted">Фактически: {task.actualMinutes ?? 0} мин.</p>
           </div>
           <div>
             <label className="text-xs text-muted">Родительская задача</label>
@@ -255,10 +257,18 @@ export function TaskDialog() {
           </details>
         )}
 
-        <div className="flex justify-between pt-2">
-          <Button variant="ghost" onClick={() => { archiveTask(task.id); setTaskId(null) }}>
-            В архив
-          </Button>
+        <div className="flex flex-wrap justify-between gap-2 pt-2">
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => {
+              startTimer({ taskId: task.id, title: task.title, kind: "focus" })
+              setTaskId(null)
+            }}>
+              Начать фокус
+            </Button>
+            <Button variant="ghost" onClick={() => { archiveTask(task.id); setTaskId(null) }}>
+              В архив
+            </Button>
+          </div>
           <Button onClick={() => setTaskId(null)}>Закрыть</Button>
         </div>
       </Card>
