@@ -18,6 +18,9 @@ export function TasksPage() {
   const removeTask = useNexora((s) => s.removeTask)
   const permanentlyDeleteTask = useNexora((s) => s.permanentlyDeleteTask)
   const setTaskId = useUI((s) => s.setTaskId)
+  const savedTaskViews = useUI((s) => s.savedTaskViews)
+  const saveTaskView = useUI((s) => s.saveTaskView)
+  const removeTaskView = useUI((s) => s.removeTaskView)
 
   const [view, setView] = useState<"active" | "archive" | "trash">("active")
   const [layout, setLayout] = useState<"list" | "table" | "kanban">("list")
@@ -29,6 +32,8 @@ export function TasksPage() {
   const [sortBy, setSortBy] = useState<"priority" | "due" | "created" | "title">("priority")
   const [search, setSearch] = useState("")
   const [title, setTitle] = useState("")
+  const [viewName, setViewName] = useState("")
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([])
 
   const today = isoDate()
   const weekLimit = addDays(today, 7)
@@ -63,6 +68,50 @@ export function TasksPage() {
         return (prio[a.priority] ?? 5) - (prio[b.priority] ?? 5)
       })
   }, [tasks, filter, priorityFilter, projectFilter, search, view, quickFilter, today, weekLimit, sortBy])
+
+  const selectedCount = selectedTaskIds.filter((id) => filtered.some((task) => task.id === id)).length
+  const toggleTaskSelection = (id: string) => {
+    setSelectedTaskIds((current) => current.includes(id)
+      ? current.filter((item) => item !== id)
+      : [...current, id])
+  }
+  const clearSelection = () => setSelectedTaskIds([])
+  const applySavedView = (id: string) => {
+    const saved = savedTaskViews.find((item) => item.id === id)
+    if (!saved) return
+    setFilter(saved.filter)
+    setPriorityFilter(saved.priorityFilter)
+    setProjectFilter(saved.projectFilter)
+    setSortBy(saved.sortBy)
+    setQuickFilter(saved.quickFilter)
+    setSearch(saved.search)
+    setLayout(saved.layout)
+    setView("active")
+    clearSelection()
+  }
+  const handleSaveView = () => {
+    const name = viewName.trim()
+    if (!name) return
+    saveTaskView({ name, filter, priorityFilter, projectFilter, sortBy, quickFilter, search, layout })
+    setViewName("")
+  }
+  const selectedTasks = filtered.filter((task) => selectedTaskIds.includes(task.id))
+  const bulkSetStatus = (status: TaskStatus) => {
+    selectedTasks.forEach((task) => setTaskStatus(task.id, status))
+    clearSelection()
+  }
+  const bulkSetPriority = (priority: Priority) => {
+    selectedTasks.forEach((task) => updateTask(task.id, { priority }))
+    clearSelection()
+  }
+  const bulkArchive = () => {
+    selectedTasks.forEach((task) => archiveTask(task.id))
+    clearSelection()
+  }
+  const bulkTrash = () => {
+    selectedTasks.forEach((task) => removeTask(task.id))
+    clearSelection()
+  }
 
   const handleAdd = () => {
     if (!title.trim()) return
@@ -150,6 +199,39 @@ export function TasksPage() {
         />
       </div>
 
+      {view === "active" && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-white/[0.025] p-3">
+          <span className="text-xs text-muted">Сохранённые представления</span>
+          <Select value="" onChange={(event) => applySavedView(event.target.value)} className="min-w-44">
+            <option value="">Открыть представление...</option>
+            {savedTaskViews.map((saved) => <option key={saved.id} value={saved.id}>{saved.name}</option>)}
+          </Select>
+          <Input value={viewName} onChange={(event) => setViewName(event.target.value)} placeholder="Название представления" className="max-w-52" />
+          <Button size="sm" variant="secondary" onClick={handleSaveView} disabled={!viewName.trim()}>Сохранить текущие фильтры</Button>
+          {savedTaskViews.map((saved) => (
+            <Button key={saved.id} size="sm" variant="ghost" title={`Удалить представление «${saved.name}»`} onClick={() => removeTaskView(saved.id)}>× {saved.name}</Button>
+          ))}
+        </div>
+      )}
+
+      {view === "active" && selectedCount > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-teal-400/20 bg-teal-400/5 p-3">
+          <strong className="text-sm">Выбрано: {selectedCount}</strong>
+          <Select value="" onChange={(event) => event.target.value && bulkSetStatus(event.target.value as TaskStatus)}>
+            <option value="">Изменить статус...</option>
+            {Object.entries(STATUS_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </Select>
+          <Select value="" onChange={(event) => event.target.value && bulkSetPriority(event.target.value as Priority)}>
+            <option value="">Изменить приоритет...</option>
+            {Object.entries(PRIORITY_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </Select>
+          <Button size="sm" variant="secondary" onClick={bulkArchive}>В архив</Button>
+          <Button size="sm" variant="ghost" onClick={bulkTrash}>В корзину</Button>
+          <Button size="sm" variant="ghost" onClick={clearSelection}>Снять выбор</Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelectedTaskIds(filtered.map((task) => task.id))}>Выбрать все отфильтрованные</Button>
+        </div>
+      )}
+
       {view === "active" && layout === "kanban" ? (
         <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
           {Object.entries(STATUS_LABEL).map(([status, label]) => {
@@ -179,7 +261,10 @@ export function TasksPage() {
                       onClick={() => setTaskId(task.id)}
                       className={`cursor-grab p-3 transition hover:border-teal-400/40 ${draggedTaskId === task.id ? "opacity-40" : ""}`}
                     >
-                      <p className="text-sm font-medium">{task.title}</p>
+                      <div className="mb-2 flex items-start gap-2">
+                        <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} onClick={(event) => event.stopPropagation()} aria-label={`Выбрать задачу ${task.title}`} />
+                        <p className="text-sm font-medium">{task.title}</p>
+                      </div>
                       {task.dueDate && <p className="mt-1 text-xs text-muted">Срок: {task.dueDate}</p>}
                       <div className="mt-2 flex flex-wrap items-center gap-1">
                         <Badge priority={task.priority}>{PRIORITY_LABEL[task.priority]}</Badge>
@@ -199,6 +284,7 @@ export function TasksPage() {
           <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="border-b border-white/10 text-xs text-muted">
               <tr>
+                <th className="px-3 py-3 font-medium"><input type="checkbox" aria-label="Выбрать все отфильтрованные задачи" checked={filtered.length > 0 && filtered.every((task) => selectedTaskIds.includes(task.id))} onChange={(event) => setSelectedTaskIds(event.target.checked ? filtered.map((task) => task.id) : [])} /></th>
                 <th className="px-3 py-3 font-medium">Задача</th>
                 <th className="px-3 py-3 font-medium">Статус</th>
                 <th className="px-3 py-3 font-medium">Приоритет</th>
@@ -213,6 +299,7 @@ export function TasksPage() {
                 )
                 return (
                   <tr key={task.id} className="cursor-pointer hover:bg-white/5" onClick={() => setTaskId(task.id)}>
+                    <td className="px-3 py-3" onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} aria-label={`Выбрать задачу ${task.title}`} /></td>
                     <td className="px-3 py-3">
                       <div className="font-medium">{task.title}</div>
                       {getDependencyState(task, tasks).isBlocked && <span className="text-xs text-amber-400">Заблокирована</span>}
@@ -228,7 +315,7 @@ export function TasksPage() {
                   </tr>
                 )
               })}
-              {filtered.length === 0 && <tr><td colSpan={5} className="px-3 py-8 text-center text-muted">Нет задач по фильтру</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-muted">Нет задач по фильтру</td></tr>}
             </tbody>
           </table>
         </Card>
@@ -243,6 +330,7 @@ export function TasksPage() {
               className="flex items-center gap-3 p-3 cursor-pointer hover:bg-white/5"
               onClick={() => setTaskId(task.id)}
             >
+              <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} onClick={(event) => event.stopPropagation()} aria-label={`Выбрать задачу ${task.title}`} />
               <Select
                 value={task.status}
                 onClick={(e) => e.stopPropagation()}
