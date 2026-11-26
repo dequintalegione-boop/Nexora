@@ -2,6 +2,7 @@ import { useMemo, useState } from "react"
 import { useNexora } from "@/lib/nexora/store"
 import { useUI } from "@/lib/nexora/ui-store"
 import { STATUS_LABEL, PRIORITY_LABEL } from "@/lib/nexora/copy"
+import { addDays, isoDate } from "@/lib/nexora/dates"
 import type { TaskStatus, Priority } from "@/lib/nexora/types"
 import { Button, Card, Input, Select, Badge } from "./ui"
 import { getDependencyState, getTaskChildren } from "@/lib/nexora/task-logic"
@@ -20,11 +21,15 @@ export function TasksPage() {
 
   const [view, setView] = useState<"active" | "archive" | "trash">("active")
   const [layout, setLayout] = useState<"list" | "kanban">("list")
+  const [quickFilter, setQuickFilter] = useState<"all" | "today" | "inbox" | "overdue" | "week" | "unblocked">("all")
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null)
   const [filter, setFilter] = useState<"all" | TaskStatus>("all")
   const [priorityFilter, setPriorityFilter] = useState<"all" | Priority>("all")
   const [search, setSearch] = useState("")
   const [title, setTitle] = useState("")
+
+  const today = isoDate()
+  const weekLimit = addDays(today, 7)
 
   const filtered = useMemo(() => {
     return tasks
@@ -36,11 +41,22 @@ export function TasksPage() {
       .filter((t) => filter === "all" || t.status === filter)
       .filter((t) => priorityFilter === "all" || t.priority === priorityFilter)
       .filter((t) => !search || t.title.toLowerCase().includes(search.toLowerCase()))
+      .filter((t) => {
+        if (quickFilter === "today") return t.scheduledDate === today || t.dueDate === today
+        if (quickFilter === "inbox") return t.status === "inbox"
+        if (quickFilter === "overdue") return Boolean(t.dueDate && t.dueDate < today && t.status !== "done")
+        if (quickFilter === "week") {
+          const date = t.scheduledDate || t.dueDate
+          return Boolean(date && date >= today && date <= weekLimit)
+        }
+        if (quickFilter === "unblocked") return !getDependencyState(t, tasks).isBlocked
+        return true
+      })
       .sort((a, b) => {
         const prio = { critical: 0, high: 1, medium: 2, low: 3, none: 4 }
         return (prio[a.priority] ?? 5) - (prio[b.priority] ?? 5)
       })
-  }, [tasks, filter, priorityFilter, search, view])
+  }, [tasks, filter, priorityFilter, search, view, quickFilter, today, weekLimit])
 
   const handleAdd = () => {
     if (!title.trim()) return
@@ -77,6 +93,22 @@ export function TasksPage() {
           <div className="flex gap-1 rounded-lg border border-white/10 p-1">
             <Button size="sm" variant={layout === "list" ? "primary" : "ghost"} onClick={() => setLayout("list")}>Список</Button>
             <Button size="sm" variant={layout === "kanban" ? "primary" : "ghost"} onClick={() => setLayout("kanban")}>Канбан</Button>
+          </div>
+        )}
+        {view === "active" && (
+          <div className="flex flex-wrap gap-1">
+            {([
+              ["all", "Все"],
+              ["today", "Сегодня"],
+              ["inbox", "Входящие"],
+              ["overdue", "Просрочено"],
+              ["week", "На неделе"],
+              ["unblocked", "Не заблокированы"],
+            ] as const).map(([key, label]) => (
+              <Button key={key} size="sm" variant={quickFilter === key ? "secondary" : "ghost"} onClick={() => setQuickFilter(key)}>
+                {label}
+              </Button>
+            ))}
           </div>
         )}
         <Select value={filter} onChange={(e) => setFilter(e.target.value as any)}>
