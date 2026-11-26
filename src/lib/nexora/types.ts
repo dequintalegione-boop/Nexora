@@ -101,19 +101,24 @@ export interface HabitLog {
   skipReason?: string
 }
 
-export interface DailyEntry {
-  id: ID
-  date: string
-  mood?: number
-  energy?: number
+export interface Reflection {
   gratitude?: string
   wins?: string
   best?: string
-  fails?: string
-  tomorrow?: string
-  thoughts?: string
+  challenges?: string
+}
+
+export interface DailyEntry {
+  id: ID
   createdAt: string
   updatedAt: string
+  date: string
+  mood?: number
+  energy?: number
+  focus?: string
+  freeThoughts?: string
+  reflection?: Reflection
+  tomorrowFocus?: string
 }
 
 export interface Goal {
@@ -126,8 +131,21 @@ export interface Goal {
   horizon: Horizon
   status: GoalStatus
   targetDate?: string
-  progress?: number
+  progress: number
   projectIds?: ID[]
+  notes?: string
+}
+
+export interface TimeSession {
+  id: ID
+  createdAt: string
+  updatedAt: string
+  kind: SessionKind
+  startedAt: string
+  endedAt?: string
+  taskId?: string
+  title?: string
+  durationMinutes?: number
 }
 
 export interface ActiveTimer {
@@ -135,6 +153,8 @@ export interface ActiveTimer {
   startedAt: string
   taskId?: string
   label?: string
+  pausedAt?: string
+  accumulatedMs?: number
 }
 
 export interface Settings {
@@ -155,7 +175,7 @@ export interface Persisted {
   habitLogs: HabitLog[]
   entries: DailyEntry[]
   goals: Goal[]
-  sessions: any[]
+  sessions: TimeSession[]
   activeTimer: ActiveTimer | null
   settings: Settings
 }
