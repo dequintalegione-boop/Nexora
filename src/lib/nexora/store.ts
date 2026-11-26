@@ -453,9 +453,6 @@ export const useNexora = create<Store>()(
       onRehydrateStorage: () => (state) => {
         if (state) {
           state.hydrated = true
-          if (!state.settings?.initialized) {
-            setTimeout(() => state.loadSeed?.(), 0)
-          }
         }
       },
     }
