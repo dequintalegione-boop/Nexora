@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware"
 import { STATUS_LABEL, WIDGETS } from "./copy"
 import { addDays, isoDate } from "./dates"
 import { buildSeed } from "./seed"
-import { canAddTaskDependency, canSetTaskParent } from "./task-logic"
+import { buildNextTaskOccurrence, canAddTaskDependency, canSetTaskParent } from "./task-logic"
 import type {
   ActiveTimer,
   DailyEntry,
@@ -191,22 +191,31 @@ export const useNexora = create<Store>()(
       setTaskStatus: (id, status) =>
         set((s) => {
           const now = nowISO()
-          return {
-            tasks: s.tasks.map((t) =>
-              t.id === id
-                ? {
-                    ...t,
-                    status,
-                    completedAt: status === "done" ? now : undefined,
-                    updatedAt: now,
-                    history: [
-                      ...(t.history ?? []),
-                      { at: now, change: `Статус → ${STATUS_LABEL[status]}` },
-                    ].slice(-100),
-                  }
-                : t
-            ),
+          const current = s.tasks.find((task) => task.id === id)
+          if (!current) return s
+
+          const nextTasks = s.tasks.map((task) =>
+            task.id === id
+              ? {
+                  ...task,
+                  status,
+                  completedAt: status === "done" ? now : undefined,
+                  updatedAt: now,
+                  history: [
+                    ...(task.history ?? []),
+                    { at: now, change: `Статус → ${STATUS_LABEL[status]}` },
+                  ].slice(-100),
+                }
+              : task
+          )
+
+          // Materialize the next occurrence only on the first transition to Done.
+          if (status === "done" && current.status !== "done") {
+            const next = buildNextTaskOccurrence(current, now)
+            if (next) nextTasks.unshift({ ...next, id: nid("task") })
           }
+
+          return { tasks: nextTasks }
         }),
 
       archiveTask: (id) =>
