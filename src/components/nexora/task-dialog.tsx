@@ -192,6 +192,22 @@ export function TaskDialog() {
                   recurrenceRule: { ...task.recurrenceRule!, until: e.target.value || undefined },
                 })}
               />
+              <div className="mt-2">
+                <label className="text-xs text-muted">Количество повторений, включая текущее</label>
+                <Input
+                  className="w-full"
+                  type="number"
+                  min={1}
+                  value={task.recurrenceRule.count ?? ""}
+                  placeholder="Без ограничения"
+                  onChange={(e) => updateTask(task.id, {
+                    recurrenceRule: {
+                      ...task.recurrenceRule!,
+                      count: e.target.value ? Math.max(1, Number(e.target.value)) : undefined,
+                    },
+                  })}
+                />
+              </div>
               <p className="mt-1 text-xs text-muted">Следующая задача создаётся автоматически после завершения текущей.</p>
             </div>
           )}
