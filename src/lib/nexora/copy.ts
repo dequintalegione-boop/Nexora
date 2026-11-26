@@ -24,4 +24,6 @@ export const WIDGETS = [
   { id: "suggest", title: "Чем заняться?" },
   { id: "projects", title: "Проекты" },
   { id: "capture", title: "Быстрый захват" },
+  { id: "goal", title: "Главная цель" },
+  { id: "timer", title: "Таймер" },
 ] as const
