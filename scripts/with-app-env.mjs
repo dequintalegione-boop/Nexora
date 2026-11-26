@@ -13,10 +13,9 @@ if (existsSync(envPath)) {
         extraEnv[k] = String(v);
       }
     }
-    if (data.deploy) {
-      // pass through
-    }
-  } catch {}
+  } catch (error) {
+    console.warn("Could not read .grok/app-env.json:", error);
+  }
 }
 
 const args = process.argv.slice(2);
@@ -25,10 +24,28 @@ if (args.length === 0) {
   process.exit(1);
 }
 
+// Invoke Vite's JavaScript entry point with Node. This avoids Windows
+// spawn() failures when the npm executable is exposed as vite.cmd.
+if (args[0] === "vite") {
+  args[0] = resolve(process.cwd(), "node_modules/vite/bin/vite.js");
+  args.unshift(process.execPath);
+}
+
 const child = spawn(args[0], args.slice(1), {
   stdio: "inherit",
   env: { ...process.env, ...extraEnv },
   shell: false,
 });
 
-child.on("exit", (code) => process.exit(code ?? 1));
+child.on("error", (error) => {
+  console.error(`Failed to start command "${args[0]}":`, error);
+  process.exitCode = 1;
+});
+
+child.on("exit", (code, signal) => {
+  if (signal) {
+    process.kill(process.pid, signal);
+    return;
+  }
+  process.exitCode = code ?? 1;
+});
