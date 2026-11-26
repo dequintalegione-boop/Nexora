@@ -204,6 +204,8 @@ export interface ActiveTimer {
 }
 
 export interface Settings {
+  taskStatusLabels?: Partial<Record<TaskStatus, string>>
+  taskPriorityLabels?: Partial<Record<Priority, string>>
   initialized: boolean
   theme: ThemeMode
   accent: string
