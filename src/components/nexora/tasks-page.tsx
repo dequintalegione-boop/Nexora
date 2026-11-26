@@ -2,8 +2,7 @@ import { useMemo, useState } from "react"
 import { useNexora } from "@/lib/nexora/store"
 import { useUI } from "@/lib/nexora/ui-store"
 import { STATUS_LABEL, PRIORITY_LABEL } from "@/lib/nexora/copy"
-import { isoDate } from "@/lib/nexora/dates"
-import type { Task, TaskStatus, Priority } from "@/lib/nexora/types"
+import type { TaskStatus, Priority } from "@/lib/nexora/types"
 import { Button, Card, Input, Select, Badge } from "./ui"
 
 export function TasksPage() {
