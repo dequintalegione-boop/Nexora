@@ -99,7 +99,7 @@ export function parseQuickTaskInput(input: string, today: string): QuickTaskDraf
   })
 
   return {
-    title: remaining.replace(/\s+/g, " ").replace(/\s+([,.!?])/g, "$1").trim(),
+    title: remaining.replace(/\s+/g, " ").replace(/\s+([,.?])/g, "$1").trim(),
     priority,
     scheduledDate,
     dueDate,
