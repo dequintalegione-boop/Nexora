@@ -26,6 +26,7 @@ export function TasksPage() {
   const [filter, setFilter] = useState<"all" | TaskStatus>("all")
   const [priorityFilter, setPriorityFilter] = useState<"all" | Priority>("all")
   const [projectFilter, setProjectFilter] = useState("all")
+  const [sortBy, setSortBy] = useState<"priority" | "due" | "created" | "title">("priority")
   const [search, setSearch] = useState("")
   const [title, setTitle] = useState("")
 
@@ -56,9 +57,12 @@ export function TasksPage() {
       })
       .sort((a, b) => {
         const prio = { critical: 0, high: 1, medium: 2, low: 3, none: 4 }
+        if (sortBy === "due") return (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31")
+        if (sortBy === "created") return b.createdAt.localeCompare(a.createdAt)
+        if (sortBy === "title") return a.title.localeCompare(b.title, "ru")
         return (prio[a.priority] ?? 5) - (prio[b.priority] ?? 5)
       })
-  }, [tasks, filter, priorityFilter, projectFilter, search, view, quickFilter, today, weekLimit])
+  }, [tasks, filter, priorityFilter, projectFilter, search, view, quickFilter, today, weekLimit, sortBy])
 
   const handleAdd = () => {
     if (!title.trim()) return
@@ -130,6 +134,12 @@ export function TasksPage() {
           {projects.filter((project) => !project.archived).map((project) => (
             <option key={project.id} value={project.id}>{project.title}</option>
           ))}
+        </Select>
+        <Select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)}>
+          <option value="priority">По приоритету</option>
+          <option value="due">По сроку</option>
+          <option value="created">Сначала новые</option>
+          <option value="title">По названию</option>
         </Select>
         <Input
           value={search}
