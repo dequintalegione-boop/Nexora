@@ -1,4 +1,3 @@
-import { addDays } from "./dates"
 import type { Priority } from "./types"
 
 export interface QuickTaskDraft {
@@ -8,6 +7,24 @@ export interface QuickTaskDraft {
   dueDate?: string
   tags: string[]
   contexts: string[]
+}
+
+function isValidISODate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const [year, month, day] = value.split("-").map(Number)
+  const date = new Date(year, month - 1, day)
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
+}
+
+function addCalendarDays(value: string, amount: number): string {
+  const [year, month, day] = value.split("-").map(Number)
+  const date = new Date(year, month - 1, day)
+  date.setDate(date.getDate() + amount)
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-")
 }
 
 const PRIORITY_TOKENS: Record<string, Priority> = {
@@ -46,6 +63,7 @@ export function parseQuickTaskInput(input: string, today: string): QuickTaskDraf
   })
 
   remaining = remaining.replace(/(^|\s)до\s+(\d{4}-\d{2}-\d{2})(?=\s|$)/giu, (_match, prefix: string, date: string) => {
+    if (!isValidISODate(date)) return _match
     dueDate = date
     return prefix
   })
@@ -57,12 +75,13 @@ export function parseQuickTaskInput(input: string, today: string): QuickTaskDraf
   ]
   for (const [pattern, offset] of dateTokens) {
     remaining = remaining.replace(pattern, (_match, prefix: string) => {
-      scheduledDate = addDays(today, offset)
+      scheduledDate = addCalendarDays(today, offset)
       return prefix
     })
   }
 
   remaining = remaining.replace(/(^|\s)(\d{4}-\d{2}-\d{2})(?=\s|$)/gu, (_match, prefix: string, date: string) => {
+    if (!isValidISODate(date)) return _match
     scheduledDate = date
     return prefix
   })
