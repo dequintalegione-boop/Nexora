@@ -15,6 +15,7 @@ export function TaskDialog() {
   const setTaskStatus = useNexora((s) => s.setTaskStatus)
   const archiveTask = useNexora((s) => s.archiveTask)
   const startTimer = useNexora((s) => s.startTimer)
+  const activeTimer = useNexora((s) => s.activeTimer)
   const setTaskParent = useNexora((s) => s.setTaskParent)
   const addTaskDependency = useNexora((s) => s.addTaskDependency)
   const removeTaskDependency = useNexora((s) => s.removeTaskDependency)
@@ -259,11 +260,11 @@ export function TaskDialog() {
 
         <div className="flex flex-wrap justify-between gap-2 pt-2">
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => {
+            <Button variant="secondary" disabled={Boolean(activeTimer)} onClick={() => {
               startTimer({ taskId: task.id, title: task.title, kind: "focus" })
               setTaskId(null)
             }}>
-              Начать фокус
+              {activeTimer ? "Таймер уже запущен" : "Начать фокус"}
             </Button>
             <Button variant="ghost" onClick={() => { archiveTask(task.id); setTaskId(null) }}>
               В архив
