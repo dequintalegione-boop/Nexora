@@ -1,8 +1,8 @@
 import { useMemo, useState, type ReactElement } from "react"
 import { useNexora } from "@/lib/nexora/store"
 import { useUI } from "@/lib/nexora/ui-store"
-import { WIDGETS, STATUS_LABEL } from "@/lib/nexora/copy"
-import { isoDate, addDays, format, parseISODate, startOfWeek, ru } from "@/lib/nexora/dates"
+import { WIDGETS } from "@/lib/nexora/copy"
+import { isoDate, format, parseISODate, ru } from "@/lib/nexora/dates"
 import { dayTaskPool, isTodayTask, isScheduled, isDoneLog, logKey, logMap, suggestTask } from "@/lib/nexora/logic"
 import { Button, Card, Input } from "./ui"
 
