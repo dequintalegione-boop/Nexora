@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware"
 import { STATUS_LABEL, WIDGETS } from "./copy"
 import { addDays, isoDate } from "./dates"
 import { buildSeed } from "./seed"
+import { canAddTaskDependency, canSetTaskParent } from "./task-logic"
 import type {
   ActiveTimer,
   DailyEntry,
@@ -260,14 +261,7 @@ export const useNexora = create<Store>()(
 
       setTaskParent: (id, parentId) => {
         const tasks = get().tasks
-        if (parentId === id || (parentId && !tasks.some((t) => t.id === parentId))) return false
-        let cursor = parentId
-        const seen = new Set([id])
-        while (cursor) {
-          if (seen.has(cursor)) return false
-          seen.add(cursor)
-          cursor = tasks.find((t) => t.id === cursor)?.parentId
-        }
+        if (!canSetTaskParent(tasks, id, parentId)) return false
         const now = nowISO()
         set((s) => ({
           tasks: s.tasks.map((t) => t.id === id ? {
@@ -280,17 +274,7 @@ export const useNexora = create<Store>()(
 
       addTaskDependency: (id, dependencyId) => {
         const tasks = get().tasks
-        if (id === dependencyId || !tasks.some((t) => t.id === dependencyId)) return false
-        const byId = new Map(tasks.map((t) => [t.id, t]))
-        const stack = [dependencyId]
-        const seen = new Set<string>()
-        while (stack.length) {
-          const current = stack.pop()!
-          if (current === id) return false
-          if (seen.has(current)) continue
-          seen.add(current)
-          stack.push(...(byId.get(current)?.dependsOn ?? []))
-        }
+        if (!canAddTaskDependency(tasks, id, dependencyId)) return false
         const now = nowISO()
         set((s) => ({
           tasks: s.tasks.map((t) => t.id === id ? {
