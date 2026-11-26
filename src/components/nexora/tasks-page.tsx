@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
 import { useNexora } from "@/lib/nexora/store"
-import { useUI } from "@/lib/nexora/ui-store"
+import { DEFAULT_TASK_TABLE_COLUMNS, TASK_TABLE_COLUMN_LABELS, useUI, type TaskTableColumn } from "@/lib/nexora/ui-store"
 import { getTaskStatusLabels, getTaskPriorityLabels } from "@/lib/nexora/copy"
 import { addDays, isoDate } from "@/lib/nexora/dates"
 import type { TaskStatus, Priority } from "@/lib/nexora/types"
@@ -25,6 +25,8 @@ export function TasksPage() {
   const savedTaskViews = useUI((s) => s.savedTaskViews)
   const saveTaskView = useUI((s) => s.saveTaskView)
   const removeTaskView = useUI((s) => s.removeTaskView)
+  const taskTableColumns = useUI((s) => s.taskTableColumns ?? DEFAULT_TASK_TABLE_COLUMNS)
+  const toggleTaskTableColumn = useUI((s) => s.toggleTaskTableColumn)
 
   const [view, setView] = useState<"active" | "archive" | "trash">("active")
   const [layout, setLayout] = useState<"list" | "table" | "kanban">("list")
@@ -90,13 +92,14 @@ export function TasksPage() {
     setQuickFilter(saved.quickFilter)
     setSearch(saved.search)
     setLayout(saved.layout)
+    if (saved.columns?.length) useUI.setState({ taskTableColumns: saved.columns })
     setView("active")
     clearSelection()
   }
   const handleSaveView = () => {
     const name = viewName.trim()
     if (!name) return
-    saveTaskView({ name, filter, priorityFilter, projectFilter, sortBy, quickFilter, search, layout })
+    saveTaskView({ name, filter, priorityFilter, projectFilter, sortBy, quickFilter, search, layout, columns: taskTableColumns })
     setViewName("")
   }
   const selectedTasks = filtered.filter((task) => selectedTaskIds.includes(task.id))
@@ -300,45 +303,63 @@ export function TasksPage() {
           })}
         </div>
       ) : view === "active" && layout === "table" ? (
-        <Card className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="border-b border-white/10 text-xs text-muted">
-              <tr>
-                <th className="px-3 py-3 font-medium"><input type="checkbox" aria-label="Выбрать все отфильтрованные задачи" checked={filtered.length > 0 && filtered.every((task) => selectedTaskIds.includes(task.id))} onChange={(event) => setSelectedTaskIds(event.target.checked ? filtered.map((task) => task.id) : [])} /></th>
-                <th className="px-3 py-3 font-medium">Задача</th>
-                <th className="px-3 py-3 font-medium">Статус</th>
-                <th className="px-3 py-3 font-medium">Приоритет</th>
-                <th className="px-3 py-3 font-medium">Срок</th>
-                <th className="px-3 py-3 font-medium">Проекты</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {filtered.map((task) => {
-                const linkedProjects = projects.filter((project) =>
-                  (task.projectIds ?? (task.projectId ? [task.projectId] : [])).includes(project.id)
-                )
-                return (
-                  <tr key={task.id} className="cursor-pointer hover:bg-white/5" onClick={() => setTaskId(task.id)}>
-                    <td className="px-3 py-3" onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} aria-label={`Выбрать задачу ${task.title}`} /></td>
-                    <td className="px-3 py-3">
-                      <div className="font-medium">{task.title}</div>
-                      {getDependencyState(task, tasks).isBlocked && <span className="text-xs text-amber-400">Заблокирована</span>}
-                    </td>
-                    <td className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
-                      <Select className="w-36" value={task.status} onChange={(event) => setTaskStatus(task.id, event.target.value as TaskStatus)}>
-                        {Object.entries(statusLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                      </Select>
-                    </td>
-                    <td className="px-3 py-3"><Badge priority={task.priority}>{priorityLabels[task.priority]}</Badge></td>
-                    <td className="px-3 py-3 tabular-nums text-muted">{task.dueDate ?? "—"}</td>
-                    <td className="px-3 py-3 text-muted">{linkedProjects.map((project) => project.title).join(", ") || "—"}</td>
-                  </tr>
-                )
-              })}
-              {filtered.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-muted">Нет задач по фильтру</td></tr>}
-            </tbody>
-          </table>
-        </Card>
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-white/[0.025] p-3">
+            <span className="mr-1 text-xs text-muted">Колонки таблицы</span>
+            {(Object.keys(TASK_TABLE_COLUMN_LABELS) as TaskTableColumn[]).map((column) => (
+              <label key={column} className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs hover:bg-white/5">
+                <input
+                  type="checkbox"
+                  checked={taskTableColumns.includes(column)}
+                  disabled={column === "title"}
+                  onChange={() => toggleTaskTableColumn(column)}
+                />
+                {TASK_TABLE_COLUMN_LABELS[column]}
+              </label>
+            ))}
+            <button type="button" className="ml-auto text-xs text-muted hover:text-foreground" onClick={() => useUI.setState({ taskTableColumns: DEFAULT_TASK_TABLE_COLUMNS })}>
+              Сбросить
+            </button>
+          </div>
+          <Card className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="border-b border-white/10 text-xs text-muted">
+                <tr>
+                  <th className="px-3 py-3 font-medium"><input type="checkbox" aria-label="Выбрать все отфильтрованные задачи" checked={filtered.length > 0 && filtered.every((task) => selectedTaskIds.includes(task.id))} onChange={(event) => setSelectedTaskIds(event.target.checked ? filtered.map((task) => task.id) : [])} /></th>
+                  {taskTableColumns.map((column) => <th key={column} className="px-3 py-3 font-medium">{TASK_TABLE_COLUMN_LABELS[column]}</th>)}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {filtered.map((task) => {
+                  const linkedProjects = projects.filter((project) =>
+                    (task.projectIds ?? (task.projectId ? [task.projectId] : [])).includes(project.id)
+                  )
+                  const cells: Record<TaskTableColumn, React.ReactNode> = {
+                    title: <><div className="font-medium">{task.title}</div>{getDependencyState(task, tasks).isBlocked && <span className="text-xs text-amber-400">Заблокирована</span>}</>,
+                    status: <Select className="w-36" value={task.status} onChange={(event) => setTaskStatus(task.id, event.target.value as TaskStatus)}><>{Object.entries(statusLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</></Select>,
+                    priority: <Badge priority={task.priority}>{priorityLabels[task.priority]}</Badge>,
+                    dueDate: <span className="tabular-nums text-muted">{task.dueDate ?? "—"}</span>,
+                    scheduledDate: <span className="tabular-nums text-muted">{task.scheduledDate ?? "—"}</span>,
+                    projects: <span className="text-muted">{linkedProjects.map((project) => project.title).join(", ") || "—"}</span>,
+                    tags: <span className="text-muted">{task.tags?.join(", ") || "—"}</span>,
+                    estimate: <span className="tabular-nums text-muted">{task.estimatedMinutes ?? task.estimateMinutes ?? "—"}</span>,
+                    actual: <span className="tabular-nums text-muted">{task.actualMinutes ?? "—"}</span>,
+                    updatedAt: <span className="tabular-nums text-muted">{new Date(task.updatedAt).toLocaleDateString("ru-RU")}</span>,
+                  }
+                  return (
+                    <tr key={task.id} className="cursor-pointer hover:bg-white/5" onClick={() => setTaskId(task.id)}>
+                      <td className="px-3 py-3" onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} aria-label={`Выбрать задачу ${task.title}`} /></td>
+                      {taskTableColumns.map((column) => (
+                        <td key={column} className="px-3 py-3" onClick={column === "status" ? (event) => event.stopPropagation() : undefined}>{cells[column]}</td>
+                      ))}
+                    </tr>
+                  )
+                })}
+                {filtered.length === 0 && <tr><td colSpan={taskTableColumns.length + 1} className="px-3 py-8 text-center text-muted">Нет задач по фильтру</td></tr>}
+              </tbody>
+            </table>
+          </Card>
+        </div>
       ) : (
         <div className="space-y-2">
           {filtered.length === 0 && (
