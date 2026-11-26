@@ -94,12 +94,14 @@ export function buildNextTaskOccurrence(task: Task, now: string): Omit<Task, "id
   const occurrenceNumber = (task.occurrenceNumber ?? 1) + 1
   if (rule.count != null && occurrenceNumber > rule.count) return null
 
-  const baseDate = task.occurrenceDate ?? task.scheduledDate ?? task.dueDate ?? now.slice(0, 10)
-  const nextDate = shiftOccurrenceDate(baseDate, rule.frequency, rule.interval)
+  const baseDate = task.recurrenceStartDate ?? task.occurrenceDate ?? task.scheduledDate ?? task.dueDate ?? now.slice(0, 10)
+  const nextDate = shiftOccurrenceDate(baseDate, rule.frequency, rule.interval * (occurrenceNumber - 1))
   if (rule.until && nextDate > rule.until) return null
 
+  const scheduledAnchor = task.recurrenceStartScheduledDate ?? task.scheduledDate
+  const dueAnchor = task.recurrenceStartDueDate ?? task.dueDate
   const shiftField = (date?: string) =>
-    date ? shiftOccurrenceDate(date, rule.frequency, rule.interval) : undefined
+    date ? shiftOccurrenceDate(date, rule.frequency, rule.interval * (occurrenceNumber - 1)) : undefined
 
   return {
     ...task,
@@ -110,10 +112,13 @@ export function buildNextTaskOccurrence(task: Task, now: string): Omit<Task, "id
     deletedAt: undefined,
     completedAt: undefined,
     status: "planned",
-    scheduledDate: shiftField(task.scheduledDate),
-    dueDate: shiftField(task.dueDate),
+    scheduledDate: shiftField(scheduledAnchor),
+    dueDate: shiftField(dueAnchor),
     occurrenceDate: nextDate,
     occurrenceNumber,
+    recurrenceStartDate: baseDate,
+    recurrenceStartScheduledDate: scheduledAnchor,
+    recurrenceStartDueDate: dueAnchor,
     recurrenceParentId: task.recurrenceParentId ?? task.id,
     parentId: task.parentId,
     dependsOn: [...(task.dependsOn ?? [])],
