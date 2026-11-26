@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react"
 import { useNexora } from "@/lib/nexora/store"
-import { isoDate, addDays } from "@/lib/nexora/dates"
+import { isoDate } from "@/lib/nexora/dates"
 import { isScheduled, isDoneLog, logKey, logMap } from "@/lib/nexora/logic"
-import type { Habit, Measurement } from "@/lib/nexora/types"
+import type { Measurement } from "@/lib/nexora/types"
 import { Button, Card, Input, Select } from "./ui"
 
 export function HabitsPage() {
