@@ -77,18 +77,11 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return
-    let cancelled = false
 
     initializeApp().catch((error) => {
-      console.error("Не удалось инициализировать Nexora:", error)
-      if (!cancelled) {
-        useNexora.getState().updateSettings({ initialized: true })
-      }
+      // Do not mark a failed migration as complete. The original IndexedDB data remains intact.
+      console.error("Не удалось инициализировать Nexora. Миграция будет повторена при следующем запуске:", error)
     })
-
-    return () => {
-      cancelled = true
-    }
   }, [hydrated])
 
   return <RouterProvider router={router} />
