@@ -16,7 +16,7 @@ export function getDependencyState(task: Task, tasks: Task[]): DependencyState {
   const blockedBy = dependencyIds
     .map((id) => byId.get(id))
     .filter((item): item is Task => Boolean(item && item.status !== "done" && !item.deletedAt))
-  const missingDependencyIds = dependencyIds.filter((id) => !byId.has(id))
+  const missingDependencyIds = dependencyIds.filter((id) => !byId.has(id) || Boolean(byId.get(id)?.deletedAt))
   return {
     blockedBy,
     missingDependencyIds,
@@ -26,7 +26,7 @@ export function getDependencyState(task: Task, tasks: Task[]): DependencyState {
 
 export function canSetTaskParent(tasks: Task[], taskId: string, parentId?: string): boolean {
   if (!parentId) return true
-  if (parentId === taskId || !tasks.some((task) => task.id === parentId && !task.deletedAt)) return false
+  if (parentId === taskId || !tasks.some((task) => task.id === parentId && !task.deletedAt && !task.archived)) return false
 
   const visited = new Set([taskId])
   let cursor: string | undefined = parentId
@@ -39,7 +39,7 @@ export function canSetTaskParent(tasks: Task[], taskId: string, parentId?: strin
 }
 
 export function canAddTaskDependency(tasks: Task[], taskId: string, dependencyId: string): boolean {
-  if (taskId === dependencyId || !tasks.some((task) => task.id === dependencyId && !task.deletedAt)) {
+  if (taskId === dependencyId || !tasks.some((task) => task.id === dependencyId && !task.deletedAt && !task.archived)) {
     return false
   }
 
