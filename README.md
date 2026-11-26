@@ -2,9 +2,13 @@
 
 Персональная система управления жизнью, задачами и временем (PWA).
 
-## Как запустить
+## Онлайн
 
-> **Важно:** не открывай `index.html` двойным кликом. Это React + Vite — нужен dev-сервер.
+После включения GitHub Pages приложение будет здесь:
+
+**https://dequintalegione-boop.github.io/Nexora/**
+
+## Локальный запуск
 
 ```bash
 git clone https://github.com/dequintalegione-boop/Nexora.git
@@ -13,23 +17,26 @@ npm install
 npm run dev
 ```
 
-Открой в браузере адрес, который покажет Vite (обычно **http://localhost:5173**).
+Открой http://localhost:5173
 
-## Что уже работает
+> Не открывай `index.html` напрямую — нужен Vite.
 
-- Dashboard со счётчиками из локальной БД
-- **Задачи** — создание, фильтры, статусы, приоритеты, удаление
-- **Ежедневник** — настроение, энергия, мысли, рефлексия, фокус на завтра
-- Тёмный glass UI, боковая навигация
-- Данные в IndexedDB (Dexie), без сервера
+## GitHub Pages
+
+Деплой автоматический при каждом push в `main` (Actions → Deploy to GitHub Pages).
+
+В настройках репозитория один раз включи:
+
+**Settings → Pages → Build and deployment → Source: GitHub Actions**
+
+## Что работает
+
+- Dashboard
+- Задачи (создание, фильтры, статусы, приоритеты)
+- Ежедневник (настроение, энергия, рефлексия)
+- Локальное хранение (IndexedDB / Dexie)
+- Glass UI
 
 ## Стек
 
 Vite · React 19 · TypeScript · Tailwind CSS v4 · Dexie · Zustand · React Router
-
-## Документация
-
-- [PRODUCT_SPECIFICATION.md](docs/PRODUCT_SPECIFICATION.md)
-- [ROADMAP.md](docs/ROADMAP.md)
-- [PWA_ARCHITECTURE.md](docs/PWA_ARCHITECTURE.md)
-- [DATA_AND_MIGRATION.md](docs/DATA_AND_MIGRATION.md)
