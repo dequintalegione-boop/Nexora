@@ -25,6 +25,7 @@ export function TasksPage() {
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null)
   const [filter, setFilter] = useState<"all" | TaskStatus>("all")
   const [priorityFilter, setPriorityFilter] = useState<"all" | Priority>("all")
+  const [projectFilter, setProjectFilter] = useState("all")
   const [search, setSearch] = useState("")
   const [title, setTitle] = useState("")
 
@@ -40,6 +41,7 @@ export function TasksPage() {
       })
       .filter((t) => filter === "all" || t.status === filter)
       .filter((t) => priorityFilter === "all" || t.priority === priorityFilter)
+      .filter((t) => projectFilter === "all" || t.projectId === projectFilter || (t.projectIds ?? []).includes(projectFilter))
       .filter((t) => !search || t.title.toLowerCase().includes(search.toLowerCase()))
       .filter((t) => {
         if (quickFilter === "today") return t.scheduledDate === today || t.dueDate === today
@@ -56,7 +58,7 @@ export function TasksPage() {
         const prio = { critical: 0, high: 1, medium: 2, low: 3, none: 4 }
         return (prio[a.priority] ?? 5) - (prio[b.priority] ?? 5)
       })
-  }, [tasks, filter, priorityFilter, search, view, quickFilter, today, weekLimit])
+  }, [tasks, filter, priorityFilter, projectFilter, search, view, quickFilter, today, weekLimit])
 
   const handleAdd = () => {
     if (!title.trim()) return
@@ -121,6 +123,12 @@ export function TasksPage() {
           <option value="all">Все приоритеты</option>
           {Object.entries(PRIORITY_LABEL).map(([k, v]) => (
             <option key={k} value={k}>{v}</option>
+          ))}
+        </Select>
+        <Select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
+          <option value="all">Все проекты</option>
+          {projects.filter((project) => !project.archived).map((project) => (
+            <option key={project.id} value={project.id}>{project.title}</option>
           ))}
         </Select>
         <Input
