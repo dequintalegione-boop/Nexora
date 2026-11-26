@@ -15,6 +15,7 @@ export function TaskDialog() {
   const updateTask = useNexora((s) => s.updateTask)
   const setTaskStatus = useNexora((s) => s.setTaskStatus)
   const archiveTask = useNexora((s) => s.archiveTask)
+  const restoreTask = useNexora((s) => s.restoreTask)
   const startTimer = useNexora((s) => s.startTimer)
   const activeTimer = useNexora((s) => s.activeTimer)
   const setTaskParent = useNexora((s) => s.setTaskParent)
@@ -296,9 +297,15 @@ export function TaskDialog() {
             }}>
               {activeTimer ? "Таймер уже запущен" : "Начать фокус"}
             </Button>
-            <Button variant="ghost" onClick={() => { archiveTask(task.id); setTaskId(null) }}>
-              В архив
-            </Button>
+            {task.archived || task.deletedAt ? (
+              <Button variant="ghost" onClick={() => { restoreTask(task.id); setTaskId(null) }}>
+                Восстановить
+              </Button>
+            ) : (
+              <Button variant="ghost" onClick={() => { archiveTask(task.id); setTaskId(null) }}>
+                В архив
+              </Button>
+            )}
           </div>
           <Button onClick={() => setTaskId(null)}>Закрыть</Button>
         </div>
