@@ -72,3 +72,26 @@ export function Badge({ children, priority, className }: { children: ReactNode; 
     </span>
   )
 }
+
+export function PageHeader({
+  kicker,
+  title,
+  text,
+  children,
+}: {
+  kicker?: string
+  title: string
+  text?: string
+  children?: ReactNode
+}) {
+  return (
+    <header className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      <div className="min-w-0">
+        {kicker && <p className="mb-1 text-xs font-medium uppercase tracking-wider text-dim">{kicker}</p>}
+        <h1 className="text-2xl font-semibold">{title}</h1>
+        {text && <p className="mt-1 max-w-2xl text-sm text-muted">{text}</p>}
+      </div>
+      {children && <div className="shrink-0">{children}</div>}
+    </header>
+  )
+}
