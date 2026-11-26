@@ -38,7 +38,8 @@ export class NexoraDB extends Dexie {
     })
 
     // Add the missing updatedAt index without deleting existing user data.
-    this.version(2).stores({
+    this.version(2)
+      .stores({
       tasks: 'id, status, priority, projectId, directionId, dueDate, scheduledDate, parentId, archived, updatedAt',
       projects: 'id, directionId, status, priority, dueDate, archived, updatedAt',
       directions: 'id, order, archived',
@@ -49,6 +50,11 @@ export class NexoraDB extends Dexie {
       timeSessions: 'id, taskId, projectId, directionId, startedAt, endedAt',
       settings: 'id',
     })
+      .upgrade((tx) =>
+        tx.table('goals').toCollection().modify((goal: Goal) => {
+          goal.updatedAt ||= goal.createdAt || new Date().toISOString()
+        })
+      )
   }
 }
 
