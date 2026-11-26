@@ -203,7 +203,7 @@ export const useNexora = create<Store>()(
                   updatedAt: now,
                   history: [
                     ...(task.history ?? []),
-                    { at: now, change: `Статус → ${STATUS_LABEL[status]}` },
+                    { at: now, change: `Статус → ${s.settings.taskStatusLabels?.[status]?.trim() || STATUS_LABEL[status]}` },
                   ].slice(-100),
                 }
               : task
