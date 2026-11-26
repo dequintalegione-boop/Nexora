@@ -212,7 +212,14 @@ export const useNexora = create<Store>()(
           // Materialize the next occurrence only on the first transition to Done.
           if (status === "done" && current.status !== "done") {
             const next = buildNextTaskOccurrence(current, now)
-            if (next) nextTasks.unshift({ ...next, id: nid("task") })
+            if (next) {
+              const seriesId = current.recurrenceParentId ?? current.id
+              const alreadyCreated = s.tasks.some((task) =>
+                (task.recurrenceParentId ?? task.id) === seriesId &&
+                task.occurrenceDate === next.occurrenceDate
+              )
+              if (!alreadyCreated) nextTasks.unshift({ ...next, id: nid("task") })
+            }
           }
 
           return { tasks: nextTasks }
