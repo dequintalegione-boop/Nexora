@@ -10,6 +10,7 @@ export function TaskDialog() {
   const taskId = useUI((s) => s.taskId)
   const setTaskId = useUI((s) => s.setTaskId)
   const tasks = useNexora((s) => s.tasks)
+  const projects = useNexora((s) => s.projects)
   const updateTask = useNexora((s) => s.updateTask)
   const setTaskStatus = useNexora((s) => s.setTaskStatus)
   const archiveTask = useNexora((s) => s.archiveTask)
@@ -87,10 +88,55 @@ export function TaskDialog() {
               onChange={(e) => setTaskParent(task.id, e.target.value || undefined)}
             >
               <option value="">Нет</option>
-              {tasks.filter((item) => item.id !== task.id && !item.deletedAt).map((item) => (
+              {tasks.filter((item) => item.id !== task.id && !item.deletedAt && !item.archived).map((item) => (
                 <option key={item.id} value={item.id}>{item.title}</option>
               ))}
             </Select>
+          </div>
+        </div>
+
+        <div className="space-y-2 rounded-lg border border-white/10 p-3">
+          <label className="text-xs text-muted">Проекты</label>
+          <div className="grid gap-1 sm:grid-cols-2">
+            {projects.filter((project) => !project.archived).map((project) => {
+              const selectedIds = task.projectIds ?? (task.projectId ? [task.projectId] : [])
+              const selected = selectedIds.includes(project.id)
+              return (
+                <label key={project.id} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={(e) => {
+                      const nextIds = e.target.checked
+                        ? [...selectedIds, project.id]
+                        : selectedIds.filter((id) => id !== project.id)
+                      updateTask(task.id, { projectIds: nextIds, projectId: nextIds[0] })
+                    }}
+                  />
+                  <span className="truncate">{project.title}</span>
+                </label>
+              )
+            })}
+            {projects.filter((project) => !project.archived).length === 0 && <p className="text-xs text-muted">Нет активных проектов</p>}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-muted">Метки (через запятую)</label>
+            <Input
+              className="w-full"
+              value={(task.tags ?? []).join(", ")}
+              onChange={(e) => updateTask(task.id, { tags: e.target.value.split(",").map((tag) => tag.trim()).filter(Boolean) })}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted">Контексты (через запятую)</label>
+            <Input
+              className="w-full"
+              value={(task.contexts ?? []).join(", ")}
+              onChange={(e) => updateTask(task.id, { contexts: e.target.value.split(",").map((context) => context.trim()).filter(Boolean) })}
+            />
           </div>
         </div>
 
