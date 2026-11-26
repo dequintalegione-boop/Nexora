@@ -42,3 +42,9 @@ test("returns an empty title for metadata-only input", () => {
   assert.equal(result.title, "")
   assert.equal(result.scheduledDate, "2026-11-28")
 })
+
+test("does not consume invalid calendar dates", () => {
+  const result = parseQuickTaskInput("Перенести встречу до 2026-02-30", "2026-11-27")
+  assert.equal(result.title, "Перенести встречу до 2026-02-30")
+  assert.equal(result.dueDate, undefined)
+})
