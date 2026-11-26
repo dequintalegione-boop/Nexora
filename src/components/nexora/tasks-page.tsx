@@ -4,6 +4,7 @@ import { useUI } from "@/lib/nexora/ui-store"
 import { STATUS_LABEL, PRIORITY_LABEL } from "@/lib/nexora/copy"
 import type { TaskStatus, Priority } from "@/lib/nexora/types"
 import { Button, Card, Input, Select, Badge } from "./ui"
+import { getDependencyState, getTaskChildren } from "@/lib/nexora/task-logic"
 
 export function TasksPage() {
   const tasks = useNexora((s) => s.tasks)
