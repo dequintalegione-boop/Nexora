@@ -67,7 +67,12 @@ type Store = Persisted & {
   updateTask: (id: string, patch: Partial<Task>) => void
   setTaskStatus: (id: string, status: TaskStatus) => void
   archiveTask: (id: string) => void
+  restoreTask: (id: string) => void
   removeTask: (id: string) => void
+  permanentlyDeleteTask: (id: string) => void
+  setTaskParent: (id: string, parentId?: string) => boolean
+  addTaskDependency: (id: string, dependencyId: string) => boolean
+  removeTaskDependency: (id: string, dependencyId: string) => void
   addProject: (input: Partial<Project> & { title: string }) => string
   updateProject: (id: string, patch: Partial<Project>) => void
   addDirection: (input: Partial<Direction> & { title: string }) => string
@@ -162,6 +167,14 @@ export const useNexora = create<Store>()(
           directionId: input.directionId,
           estimatedMinutes: input.estimatedMinutes,
           tags: input.tags,
+          projectIds: input.projectIds ?? (input.projectId ? [input.projectId] : undefined),
+          parentId: input.parentId,
+          dependsOn: input.dependsOn ?? [],
+          recurrenceRule: input.recurrenceRule,
+          reminders: input.reminders ?? [],
+          links: input.links ?? [],
+          contexts: input.contexts ?? [],
+          history: [{ at: now, change: "Задача создана" }],
         }
         set((s) => ({ tasks: [task, ...s.tasks] }))
         return id
@@ -175,30 +188,129 @@ export const useNexora = create<Store>()(
         })),
 
       setTaskStatus: (id, status) =>
-        set((s) => ({
-          tasks: s.tasks.map((t) =>
-            t.id === id
-              ? {
-                  ...t,
-                  status,
-                  updatedAt: nowISO(),
-                  history: [
-                    ...(t.history ?? []),
-                    { at: nowISO(), change: `Статус → ${STATUS_LABEL[status]}` },
-                  ].slice(-20),
-                }
-              : t
-          ),
-        })),
+        set((s) => {
+          const now = nowISO()
+          return {
+            tasks: s.tasks.map((t) =>
+              t.id === id
+                ? {
+                    ...t,
+                    status,
+                    completedAt: status === "done" ? now : undefined,
+                    updatedAt: now,
+                    history: [
+                      ...(t.history ?? []),
+                      { at: now, change: `Статус → ${STATUS_LABEL[status]}` },
+                    ].slice(-100),
+                  }
+                : t
+            ),
+          }
+        }),
 
       archiveTask: (id) =>
+        set((s) => {
+          const now = nowISO()
+          return {
+            tasks: s.tasks.map((t) =>
+              t.id === id
+                ? { ...t, archived: true, archivedAt: now, updatedAt: now,
+                    history: [...(t.history ?? []), { at: now, change: "Задача архивирована" }].slice(-100) }
+                : t
+            ),
+          }
+        }),
+
+      restoreTask: (id) =>
+        set((s) => {
+          const now = nowISO()
+          return {
+            tasks: s.tasks.map((t) =>
+              t.id === id
+                ? { ...t, archived: false, archivedAt: undefined, deletedAt: undefined, updatedAt: now,
+                    history: [...(t.history ?? []), { at: now, change: "Задача восстановлена" }].slice(-100) }
+                : t
+            ),
+          }
+        }),
+
+      removeTask: (id) =>
+        set((s) => {
+          const now = nowISO()
+          return {
+            tasks: s.tasks.map((t) =>
+              t.id === id
+                ? { ...t, deletedAt: now, updatedAt: now,
+                    history: [...(t.history ?? []), { at: now, change: "Задача перемещена в корзину" }].slice(-100) }
+                : t
+            ),
+          }
+        }),
+
+      permanentlyDeleteTask: (id) =>
         set((s) => ({
-          tasks: s.tasks.map((t) =>
-            t.id === id ? { ...t, archived: true, updatedAt: nowISO() } : t
-          ),
+          tasks: s.tasks
+            .filter((t) => t.id !== id)
+            .map((t) => ({
+              ...t,
+              parentId: t.parentId === id ? undefined : t.parentId,
+              dependsOn: t.dependsOn?.filter((dependencyId) => dependencyId !== id),
+            })),
         })),
 
-      removeTask: (id) => set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) })),
+      setTaskParent: (id, parentId) => {
+        const tasks = get().tasks
+        if (parentId === id || (parentId && !tasks.some((t) => t.id === parentId))) return false
+        let cursor = parentId
+        const seen = new Set([id])
+        while (cursor) {
+          if (seen.has(cursor)) return false
+          seen.add(cursor)
+          cursor = tasks.find((t) => t.id === cursor)?.parentId
+        }
+        const now = nowISO()
+        set((s) => ({
+          tasks: s.tasks.map((t) => t.id === id ? {
+            ...t, parentId, updatedAt: now,
+            history: [...(t.history ?? []), { at: now, change: parentId ? "Изменена родительская задача" : "Связь с родителем удалена" }].slice(-100),
+          } : t),
+        }))
+        return true
+      },
+
+      addTaskDependency: (id, dependencyId) => {
+        const tasks = get().tasks
+        if (id === dependencyId || !tasks.some((t) => t.id === dependencyId)) return false
+        const byId = new Map(tasks.map((t) => [t.id, t]))
+        const stack = [dependencyId]
+        const seen = new Set<string>()
+        while (stack.length) {
+          const current = stack.pop()!
+          if (current === id) return false
+          if (seen.has(current)) continue
+          seen.add(current)
+          stack.push(...(byId.get(current)?.dependsOn ?? []))
+        }
+        const now = nowISO()
+        set((s) => ({
+          tasks: s.tasks.map((t) => t.id === id ? {
+            ...t, dependsOn: [...new Set([...(t.dependsOn ?? []), dependencyId])], updatedAt: now,
+            history: [...(t.history ?? []), { at: now, change: "Добавлена зависимость" }].slice(-100),
+          } : t),
+        }))
+        return true
+      },
+
+      removeTaskDependency: (id, dependencyId) =>
+        set((s) => {
+          const now = nowISO()
+          return {
+            tasks: s.tasks.map((t) => t.id === id ? {
+              ...t, dependsOn: (t.dependsOn ?? []).filter((dependency) => dependency !== dependencyId), updatedAt: now,
+              history: [...(t.history ?? []), { at: now, change: "Удалена зависимость" }].slice(-100),
+            } : t),
+          }
+        }),
 
       addProject: (input) => {
         const id = nid("proj")
