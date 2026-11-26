@@ -235,7 +235,7 @@ export function Journal() {
             type="button"
             onClick={() => setDate((d) => shiftDate(d, 1))}
             className="pressable rounded-xl p-2 text-[var(--color-text-muted)] hover:bg-white/[0.06] hover:text-[var(--color-text)]"
-            aria-aria-label="Следующий день"
+            aria-label="Следующий день"
           >
             <ChevronRight size={18} strokeWidth={1.75} />
           </button>
