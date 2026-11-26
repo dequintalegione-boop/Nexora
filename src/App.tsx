@@ -11,11 +11,20 @@ import { Timer } from '@/pages/Timer'
 import { Calendar } from '@/pages/Calendar'
 import { Analytics } from '@/pages/Analytics'
 import { Settings } from '@/pages/Settings'
-import { ensureDefaults } from '@/db'
+import { db, ensureDefaults } from '@/db'
 
 export default function App() {
   useEffect(() => {
-    ensureDefaults().catch(console.error)
+    ensureDefaults()
+      .then(async () => {
+        const settings = await db.settings.get('settings')
+        if (settings?.accentColor) {
+          document.documentElement.style.setProperty('--color-accent', settings.accentColor)
+          document.documentElement.style.setProperty('--color-accent-soft', settings.accentColor + '24')
+          document.documentElement.style.setProperty('--color-accent-glow', settings.accentColor + '66')
+        }
+      })
+      .catch(console.error)
   }, [])
 
   return (
