@@ -513,7 +513,7 @@ export const useNexora = create<Store>()(
 
       startTimer: (input) => {
         const startedAt = nowISO()
-        set({
+        set((state) => state.activeTimer ? state : ({
           activeTimer: {
             kind: input?.kind ?? "focus",
             startedAt,
@@ -522,7 +522,7 @@ export const useNexora = create<Store>()(
             label: input?.title,
             accumulatedMs: 0,
           },
-        })
+        }))
       },
 
       pauseTimer: () =>
