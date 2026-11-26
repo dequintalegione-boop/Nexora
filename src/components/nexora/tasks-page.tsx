@@ -12,8 +12,12 @@ export function TasksPage() {
   const setTaskStatus = useNexora((s) => s.setTaskStatus)
   const updateTask = useNexora((s) => s.updateTask)
   const archiveTask = useNexora((s) => s.archiveTask)
+  const restoreTask = useNexora((s) => s.restoreTask)
+  const removeTask = useNexora((s) => s.removeTask)
+  const permanentlyDeleteTask = useNexora((s) => s.permanentlyDeleteTask)
   const setTaskId = useUI((s) => s.setTaskId)
 
+  const [view, setView] = useState<"active" | "archive" | "trash">("active")
   const [filter, setFilter] = useState<"all" | TaskStatus>("all")
   const [priorityFilter, setPriorityFilter] = useState<"all" | Priority>("all")
   const [search, setSearch] = useState("")
@@ -21,7 +25,11 @@ export function TasksPage() {
 
   const filtered = useMemo(() => {
     return tasks
-      .filter((t) => !t.archived)
+      .filter((t) => {
+        if (view === "active") return !t.archived && !t.deletedAt
+        if (view === "archive") return Boolean(t.archived) && !t.deletedAt
+        return Boolean(t.deletedAt)
+      })
       .filter((t) => filter === "all" || t.status === filter)
       .filter((t) => priorityFilter === "all" || t.priority === priorityFilter)
       .filter((t) => !search || t.title.toLowerCase().includes(search.toLowerCase()))
@@ -29,7 +37,7 @@ export function TasksPage() {
         const prio = { critical: 0, high: 1, medium: 2, low: 3, none: 4 }
         return (prio[a.priority] ?? 5) - (prio[b.priority] ?? 5)
       })
-  }, [tasks, filter, priorityFilter, search])
+  }, [tasks, filter, priorityFilter, search, view])
 
   const handleAdd = () => {
     if (!title.trim()) return
@@ -40,7 +48,10 @@ export function TasksPage() {
   return (
     <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-semibold">Задачи</h1>
+        <div>
+          <h1 className="text-2xl font-semibold">Задачи</h1>
+          <p className="mt-1 text-xs text-muted">{view === "active" ? "Активные задачи" : view === "archive" ? "Архив задач" : "Корзина"}</p>
+        </div>
         <div className="flex gap-2">
           <Input
             value={title}
@@ -49,11 +60,16 @@ export function TasksPage() {
             onKeyDown={(e) => e.key === "Enter" && handleAdd()}
             className="min-w-[200px]"
           />
-          <Button onClick={handleAdd}>Добавить</Button>
+          {view === "active" && <Button onClick={handleAdd}>Добавить</Button>}
         </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
+        <div className="flex gap-1 rounded-lg border border-white/10 p-1">
+          <Button size="sm" variant={view === "active" ? "primary" : "ghost"} onClick={() => setView("active")}>Активные</Button>
+          <Button size="sm" variant={view === "archive" ? "primary" : "ghost"} onClick={() => setView("archive")}>Архив</Button>
+          <Button size="sm" variant={view === "trash" ? "primary" : "ghost"} onClick={() => setView("trash")}>Корзина</Button>
+        </div>
         <Select value={filter} onChange={(e) => setFilter(e.target.value as any)}>
           <option value="all">Все статусы</option>
           {Object.entries(STATUS_LABEL).map(([k, v]) => (
@@ -101,7 +117,7 @@ export function TasksPage() {
               )}
             </div>
             <Badge priority={task.priority}>{PRIORITY_LABEL[task.priority]}</Badge>
-            <Button
+            {view === "active" && <Button
               variant="ghost"
               size="sm"
               onClick={(e) => {
@@ -110,7 +126,37 @@ export function TasksPage() {
               }}
             >
               Архив
-            </Button>
+            </Button>}
+            {view !== "active" && <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation()
+                restoreTask(task.id)
+              }}
+            >
+              Восстановить
+            </Button>}
+            {view === "active" && <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation()
+                removeTask(task.id)
+              }}
+            >
+              В корзину
+            </Button>}
+            {view === "trash" && <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation()
+                if (window.confirm("Удалить задачу навсегда? Это действие нельзя отменить.")) permanentlyDeleteTask(task.id)
+              }}
+            >
+              Удалить навсегда
+            </Button>}
           </Card>
         ))}
       </div>
