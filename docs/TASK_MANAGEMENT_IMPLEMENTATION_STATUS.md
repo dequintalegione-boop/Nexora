@@ -4,7 +4,7 @@
 
 Последнее обновление: 2026-11-27  
 Рабочая ветка: `feature/task-table-columns`  
-Pull request: https://github.com/dequintalegione-boop/Nexora/pull/5
+Pull request: https://github.com/dequintalegione-boop/Nexora/pull/6
 
 ## Реализовано в рабочей ветке
 
