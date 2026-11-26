@@ -96,6 +96,21 @@ export const useNexora = create<Store>()(
       timerIntent: null,
 
       loadSeed: (keepPrefs = false) => {
+        const current = get()
+        const hasUserData = [
+          current.directions,
+          current.projects,
+          current.tasks,
+          current.habits,
+          current.habitLogs,
+          current.entries,
+          current.goals,
+          current.sessions,
+        ].some((items) => items.length > 0)
+
+        // Demo data must never overwrite real user content.
+        if (hasUserData) return
+
         const seed = buildSeed()
         set((state) => ({
           ...seed,
@@ -384,21 +399,23 @@ export const useNexora = create<Store>()(
           ),
         })),
 
-      startTimer: (input) =>
+      startTimer: (input) => {
+        const startedAt = nowISO()
         set({
           activeTimer: {
             kind: input?.kind ?? "focus",
-            startedAt: nowISO(),
-            sessionStartedAt: nowISO(),
+            startedAt,
+            sessionStartedAt: startedAt,
             taskId: input?.taskId,
             label: input?.title,
             accumulatedMs: 0,
           },
-        }),
+        })
+      },
 
       pauseTimer: () =>
         set((s) => {
-          if (!s.activeTimer) return s
+          if (!s.activeTimer || s.activeTimer.pausedAt) return s
           const elapsed =
             (s.activeTimer.accumulatedMs ?? 0) +
             (Date.now() - new Date(s.activeTimer.startedAt).getTime())
@@ -413,7 +430,7 @@ export const useNexora = create<Store>()(
 
       resumeTimer: () =>
         set((s) => {
-          if (!s.activeTimer) return s
+          if (!s.activeTimer || !s.activeTimer.pausedAt) return s
           return {
             activeTimer: {
               ...s.activeTimer,
