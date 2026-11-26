@@ -1,6 +1,6 @@
 import { useNexora } from "@/lib/nexora/store"
 import { useUI } from "@/lib/nexora/ui-store"
-import { STATUS_LABEL, PRIORITY_LABEL } from "@/lib/nexora/copy"
+import { getTaskStatusLabels, getTaskPriorityLabels } from "@/lib/nexora/copy"
 import type { RecurrenceFrequency } from "@/lib/nexora/types"
 import type { TaskStatus, Priority } from "@/lib/nexora/types"
 import { Button, Card, Input, Select, Textarea } from "./ui"
@@ -10,6 +10,9 @@ export function TaskDialog() {
   const taskId = useUI((s) => s.taskId)
   const setTaskId = useUI((s) => s.setTaskId)
   const tasks = useNexora((s) => s.tasks)
+  const settings = useNexora((s) => s.settings)
+  const statusLabels = getTaskStatusLabels(settings)
+  const priorityLabels = getTaskPriorityLabels(settings)
   const addTask = useNexora((s) => s.addTask)
   const projects = useNexora((s) => s.projects)
   const updateTask = useNexora((s) => s.updateTask)
@@ -43,7 +46,7 @@ export function TaskDialog() {
           <div>
             <label className="text-xs text-muted">Статус</label>
             <Select value={task.status} onChange={(e) => setTaskStatus(task.id, e.target.value as TaskStatus)}>
-              {Object.entries(STATUS_LABEL).map(([k, v]) => (
+              {Object.entries(statusLabels).map(([k, v]) => (
                 <option key={k} value={k}>{v}</option>
               ))}
             </Select>
@@ -51,7 +54,7 @@ export function TaskDialog() {
           <div>
             <label className="text-xs text-muted">Приоритет</label>
             <Select value={task.priority} onChange={(e) => updateTask(task.id, { priority: e.target.value as Priority })}>
-              {Object.entries(PRIORITY_LABEL).map(([k, v]) => (
+              {Object.entries(priorityLabels).map(([k, v]) => (
                 <option key={k} value={k}>{v}</option>
               ))}
             </Select>
