@@ -4,6 +4,7 @@ import { Layout } from '@/components/Layout'
 import { Dashboard } from '@/pages/Dashboard'
 import { Tasks } from '@/pages/Tasks'
 import { Projects } from '@/pages/Projects'
+import { Goals } from '@/pages/Goals'
 import { Journal } from '@/pages/Journal'
 import { Placeholder } from '@/pages/Placeholder'
 import { ensureDefaults } from '@/db'
@@ -20,7 +21,7 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="tasks" element={<Tasks />} />
           <Route path="projects" element={<Projects />} />
-          <Route path="goals" element={<Placeholder />} />
+          <Route path="goals" element={<Goals />} />
           <Route path="journal" element={<Journal />} />
           <Route path="calendar" element={<Placeholder />} />
           <Route path="timer" element={<Placeholder />} />
