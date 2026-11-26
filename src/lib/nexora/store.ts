@@ -573,6 +573,19 @@ export const useNexora = create<Store>()(
         set((s) => ({
           activeTimer: null,
           sessions: [session, ...s.sessions],
+          tasks: timer.taskId
+            ? s.tasks.map((task) => task.id === timer.taskId
+                ? {
+                    ...task,
+                    actualMinutes: (task.actualMinutes ?? 0) + minutes,
+                    updatedAt: nowISO(),
+                    history: [
+                      ...(task.history ?? []),
+                      { at: nowISO(), change: `Учтено времени: ${minutes} мин.` },
+                    ].slice(-100),
+                  }
+                : task)
+            : s.tasks,
         }))
         return session.id
       },
