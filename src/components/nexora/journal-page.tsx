@@ -11,17 +11,19 @@ export function JournalPage() {
 
   const [mood, setMood] = useState(entry?.mood?.toString() ?? "")
   const [energy, setEnergy] = useState(entry?.energy?.toString() ?? "")
-  const [gratitude, setGratitude] = useState(entry?.gratitude ?? "")
-  const [wins, setWins] = useState(entry?.wins ?? "")
-  const [thoughts, setThoughts] = useState(entry?.thoughts ?? "")
+  const [gratitude, setGratitude] = useState(entry?.reflection?.gratitude ?? "")
+  const [wins, setWins] = useState(entry?.reflection?.wins ?? "")
+  const [thoughts, setThoughts] = useState(entry?.freeThoughts ?? "")
 
   const save = () => {
     upsertEntry(today, {
       mood: mood ? Number(mood) : undefined,
       energy: energy ? Number(energy) : undefined,
-      gratitude: gratitude || undefined,
-      wins: wins || undefined,
-      thoughts: thoughts || undefined,
+      reflection: {
+        gratitude: gratitude || undefined,
+        wins: wins || undefined,
+      },
+      freeThoughts: thoughts || undefined,
     })
   }
 
