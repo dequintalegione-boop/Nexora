@@ -36,6 +36,19 @@ export class NexoraDB extends Dexie {
       timeSessions: 'id, taskId, projectId, directionId, startedAt, endedAt',
       settings: 'id',
     })
+
+    // Add the missing updatedAt index without deleting existing user data.
+    this.version(2).stores({
+      tasks: 'id, status, priority, projectId, directionId, dueDate, scheduledDate, parentId, archived, updatedAt',
+      projects: 'id, directionId, status, priority, dueDate, archived, updatedAt',
+      directions: 'id, order, archived',
+      habits: 'id, active, archived',
+      habitLogs: 'id, habitId, date, [habitId+date]',
+      dailyEntries: 'id, date',
+      goals: 'id, horizon, status, targetDate, archived, updatedAt',
+      timeSessions: 'id, taskId, projectId, directionId, startedAt, endedAt',
+      settings: 'id',
+    })
   }
 }
 
