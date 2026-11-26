@@ -7,7 +7,10 @@ import { Projects } from '@/pages/Projects'
 import { Goals } from '@/pages/Goals'
 import { Journal } from '@/pages/Journal'
 import { Habits } from '@/pages/Habits'
-import { Placeholder } from '@/pages/Placeholder'
+import { Timer } from '@/pages/Timer'
+import { Calendar } from '@/pages/Calendar'
+import { Analytics } from '@/pages/Analytics'
+import { Settings } from '@/pages/Settings'
 import { ensureDefaults } from '@/db'
 
 export default function App() {
@@ -25,9 +28,10 @@ export default function App() {
           <Route path="goals" element={<Goals />} />
           <Route path="journal" element={<Journal />} />
           <Route path="habits" element={<Habits />} />
-          <Route path="calendar" element={<Placeholder />} />
-          <Route path="timer" element={<Placeholder />} />
-          <Route path="settings" element={<Placeholder />} />
+          <Route path="analytics" element={<Analytics />} />
+          <Route path="calendar" element={<Calendar />} />
+          <Route path="timer" element={<Timer />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
     </HashRouter>
