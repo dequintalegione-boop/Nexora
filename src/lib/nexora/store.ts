@@ -16,6 +16,7 @@ import type {
   Settings,
   Task,
   TaskStatus,
+  TimeSession,
 } from "./types"
 
 function nid(prefix: string): string {
@@ -33,7 +34,7 @@ export function defaultSettings(): Settings {
     accent: "#2dd4bf",
     displayName: "",
     weekStartsOn: 1,
-    widgetOrder: WIDGETS.map((widget) => widget.id),
+    widgetOrder: WIDGETS.map((w) => w.id),
     hiddenWidgets: [],
   }
 }
@@ -51,11 +52,6 @@ function emptyData(): Persisted {
     activeTimer: null,
     settings: defaultSettings(),
   }
-}
-
-export interface BackupFile extends Persisted {
-  schema: 1
-  exportedAt: string
 }
 
 type Store = Persisted & {
@@ -83,32 +79,383 @@ type Store = Persisted & {
   upsertEntry: (date: string, patch: Partial<DailyEntry>) => void
   addGoal: (input: Partial<Goal> & { title: string }) => string
   updateGoal: (id: string, patch: Partial<Goal>) => void
-  // ... full implementation continues in the actual file from the workspace
+  startTimer: (input?: { taskId?: string; title?: string; kind?: SessionKind }) => void
+  pauseTimer: () => void
+  resumeTimer: () => void
+  stopTimer: () => string | null
+  setTimerIntent: (taskId: string | null) => void
 }
 
-// Note: Full store implementation is large. The complete file is available in the uploaded workspace.
-// This is a truncated version for the commit. Full content will be synced in subsequent updates.
 export const useNexora = create<Store>()(
   persist(
     (set, get) => ({
       ...emptyData(),
       hydrated: false,
       timerIntent: null,
-      loadSeed: (keepPrefs) => {
+
+      loadSeed: (keepPrefs = false) => {
         const seed = buildSeed()
         set((state) => ({
           ...seed,
-          settings: keepPrefs ? state.settings : seed.settings,
+          settings: keepPrefs
+            ? { ...seed.settings, ...state.settings, initialized: true }
+            : { ...seed.settings, initialized: true },
           hydrated: true,
         }))
       },
+
       replaceAll: (data) => set({ ...data, hydrated: true }),
-      // ... remaining methods
+
+      updateSettings: (patch) =>
+        set((s) => ({ settings: { ...s.settings, ...patch } })),
+
+      moveWidget: (id, dir) =>
+        set((s) => {
+          const order = [...s.settings.widgetOrder]
+          const idx = order.indexOf(id)
+          if (idx < 0) return s
+          const next = idx + dir
+          if (next < 0 || next >= order.length) return s
+          ;[order[idx], order[next]] = [order[next], order[idx]]
+          return { settings: { ...s.settings, widgetOrder: order } }
+        }),
+
+      toggleWidget: (id) =>
+        set((s) => {
+          const hidden = new Set(s.settings.hiddenWidgets)
+          if (hidden.has(id)) hidden.delete(id)
+          else hidden.add(id)
+          return { settings: { ...s.settings, hiddenWidgets: [...hidden] } }
+        }),
+
+      addTask: (input) => {
+        const id = nid("task")
+        const now = nowISO()
+        const task: Task = {
+          id,
+          createdAt: now,
+          updatedAt: now,
+          title: input.title,
+          status: input.status ?? "inbox",
+          priority: input.priority ?? "none",
+          description: input.description,
+          dueDate: input.dueDate,
+          scheduledDate: input.scheduledDate,
+          projectId: input.projectId,
+          directionId: input.directionId,
+          estimatedMinutes: input.estimatedMinutes,
+          tags: input.tags,
+        }
+        set((s) => ({ tasks: [task, ...s.tasks] }))
+        return id
+      },
+
+      updateTask: (id, patch) =>
+        set((s) => ({
+          tasks: s.tasks.map((t) =>
+            t.id === id ? { ...t, ...patch, updatedAt: nowISO() } : t
+          ),
+        })),
+
+      setTaskStatus: (id, status) =>
+        set((s) => ({
+          tasks: s.tasks.map((t) =>
+            t.id === id
+              ? {
+                  ...t,
+                  status,
+                  updatedAt: nowISO(),
+                  history: [
+                    ...(t.history ?? []),
+                    { at: nowISO(), change: `Статус → ${STATUS_LABEL[status]}` },
+                  ].slice(-20),
+                }
+              : t
+          ),
+        })),
+
+      archiveTask: (id) =>
+        set((s) => ({
+          tasks: s.tasks.map((t) =>
+            t.id === id ? { ...t, archived: true, updatedAt: nowISO() } : t
+          ),
+        })),
+
+      removeTask: (id) => set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) })),
+
+      addProject: (input) => {
+        const id = nid("proj")
+        const now = nowISO()
+        set((s) => ({
+          projects: [
+            {
+              id,
+              createdAt: now,
+              updatedAt: now,
+              title: input.title,
+              status: input.status ?? "active",
+              priority: input.priority ?? "medium",
+              directionId: input.directionId,
+              description: input.description,
+            },
+            ...s.projects,
+          ],
+        }))
+        return id
+      },
+
+      updateProject: (id, patch) =>
+        set((s) => ({
+          projects: s.projects.map((p) =>
+            p.id === id ? { ...p, ...patch, updatedAt: nowISO() } : p
+          ),
+        })),
+
+      addDirection: (input) => {
+        const id = nid("dir")
+        const now = nowISO()
+        set((s) => ({
+          directions: [
+            ...s.directions,
+            {
+              id,
+              createdAt: now,
+              updatedAt: now,
+              title: input.title,
+              color: input.color ?? "accent",
+              order: s.directions.length,
+              description: input.description,
+            },
+          ],
+        }))
+        return id
+      },
+
+      updateDirection: (id, patch) =>
+        set((s) => ({
+          directions: s.directions.map((d) =>
+            d.id === id ? { ...d, ...patch, updatedAt: nowISO() } : d
+          ),
+        })),
+
+      addHabit: (input) => {
+        const id = nid("hab")
+        const now = nowISO()
+        set((s) => ({
+          habits: [
+            {
+              id,
+              createdAt: now,
+              updatedAt: now,
+              title: input.title,
+              measurementType: input.measurementType ?? "boolean",
+              unit: input.unit,
+              targetValue: input.targetValue,
+              schedule: input.schedule ?? { days: [1, 2, 3, 4, 5, 6, 0] },
+              active: input.active ?? true,
+              icon: input.icon,
+            },
+            ...s.habits,
+          ],
+        }))
+        return id
+      },
+
+      updateHabit: (id, patch) =>
+        set((s) => ({
+          habits: s.habits.map((h) =>
+            h.id === id ? { ...h, ...patch, updatedAt: nowISO() } : h
+          ),
+        })),
+
+      setHabitValue: (habitId, date, value) =>
+        set((s) => {
+          const existing = s.habitLogs.find((l) => l.habitId === habitId && l.date === date)
+          const now = nowISO()
+          if (existing) {
+            return {
+              habitLogs: s.habitLogs.map((l) =>
+                l.id === existing.id
+                  ? { ...l, value, skipped: false, skipReason: undefined, updatedAt: now }
+                  : l
+              ),
+            }
+          }
+          return {
+            habitLogs: [
+              ...s.habitLogs,
+              { id: nid("log"), createdAt: now, updatedAt: now, habitId, date, value },
+            ],
+          }
+        }),
+
+      skipHabit: (habitId, date, reason) =>
+        set((s) => {
+          const existing = s.habitLogs.find((l) => l.habitId === habitId && l.date === date)
+          const now = nowISO()
+          if (existing) {
+            return {
+              habitLogs: s.habitLogs.map((l) =>
+                l.id === existing.id
+                  ? { ...l, skipped: true, skipReason: reason, value: false, updatedAt: now }
+                  : l
+              ),
+            }
+          }
+          return {
+            habitLogs: [
+              ...s.habitLogs,
+              {
+                id: nid("log"),
+                createdAt: now,
+                updatedAt: now,
+                habitId,
+                date,
+                value: false,
+                skipped: true,
+                skipReason: reason,
+              },
+            ],
+          }
+        }),
+
+      clearHabitLog: (habitId, date) =>
+        set((s) => ({
+          habitLogs: s.habitLogs.filter((l) => !(l.habitId === habitId && l.date === date)),
+        })),
+
+      upsertEntry: (date, patch) =>
+        set((s) => {
+          const now = nowISO()
+          const existing = s.entries.find((e) => e.date === date)
+          if (existing) {
+            return {
+              entries: s.entries.map((e) =>
+                e.date === date
+                  ? {
+                      ...e,
+                      ...patch,
+                      reflection: patch.reflection
+                        ? { ...e.reflection, ...patch.reflection }
+                        : e.reflection,
+                      updatedAt: now,
+                    }
+                  : e
+              ),
+            }
+          }
+          return {
+            entries: [
+              ...s.entries,
+              { id: nid("entry"), createdAt: now, updatedAt: now, date, ...patch },
+            ],
+          }
+        }),
+
+      addGoal: (input) => {
+        const id = nid("goal")
+        const now = nowISO()
+        set((s) => ({
+          goals: [
+            {
+              id,
+              createdAt: now,
+              updatedAt: now,
+              title: input.title,
+              horizon: input.horizon ?? "monthly",
+              status: input.status ?? "active",
+              progress: input.progress ?? 0,
+              description: input.description,
+              targetDate: input.targetDate,
+              projectIds: input.projectIds,
+            },
+            ...s.goals,
+          ],
+        }))
+        return id
+      },
+
+      updateGoal: (id, patch) =>
+        set((s) => ({
+          goals: s.goals.map((g) =>
+            g.id === id ? { ...g, ...patch, updatedAt: nowISO() } : g
+          ),
+        })),
+
+      startTimer: (input) =>
+        set({
+          activeTimer: {
+            kind: input?.kind ?? "focus",
+            startedAt: nowISO(),
+            taskId: input?.taskId,
+            label: input?.title,
+            accumulatedMs: 0,
+          },
+        }),
+
+      pauseTimer: () =>
+        set((s) => {
+          if (!s.activeTimer) return s
+          const elapsed =
+            (s.activeTimer.accumulatedMs ?? 0) +
+            (Date.now() - new Date(s.activeTimer.startedAt).getTime())
+          return {
+            activeTimer: {
+              ...s.activeTimer,
+              pausedAt: nowISO(),
+              accumulatedMs: elapsed,
+            },
+          }
+        }),
+
+      resumeTimer: () =>
+        set((s) => {
+          if (!s.activeTimer) return s
+          return {
+            activeTimer: {
+              ...s.activeTimer,
+              startedAt: nowISO(),
+              pausedAt: undefined,
+            },
+          }
+        }),
+
+      stopTimer: () => {
+        const timer = get().activeTimer
+        if (!timer) return null
+        const elapsed =
+          (timer.accumulatedMs ?? 0) +
+          (timer.pausedAt ? 0 : Date.now() - new Date(timer.startedAt).getTime())
+        const minutes = Math.round(elapsed / 60000)
+        const session: TimeSession = {
+          id: nid("sess"),
+          createdAt: nowISO(),
+          updatedAt: nowISO(),
+          kind: timer.kind,
+          startedAt: timer.startedAt,
+          endedAt: nowISO(),
+          taskId: timer.taskId,
+          title: timer.label,
+          durationMinutes: minutes,
+        }
+        set((s) => ({
+          activeTimer: null,
+          sessions: [session, ...s.sessions],
+        }))
+        return session.id
+      },
+
+      setTimerIntent: (taskId) => set({ timerIntent: taskId }),
     }),
     {
       name: "nexora-v1",
       onRehydrateStorage: () => (state) => {
-        if (state) state.hydrated = true
+        if (state) {
+          state.hydrated = true
+          if (!state.settings?.initialized) {
+            setTimeout(() => state.loadSeed?.(), 0)
+          }
+        }
       },
     }
   )
