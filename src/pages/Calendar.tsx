@@ -10,7 +10,10 @@ export function Calendar() {
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1))
   const [selected, setSelected] = useState(keyOf(new Date()))
   const tasks = useLiveQuery(() => db.tasks.toArray(), [])
-  const settings = useLiveQuery(() => db.settings.get('settings'), [])\n  const weekStartsOn = settings?.weekStartsOn ?? 1\n  const weekdays = weekStartsOn === 1 ? ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'] : ['Вс','Пн','Вт','Ср','Чт','Пт','Сб']\n  const habits = useLiveQuery(() => db.habits.filter(h => h.active && !h.archived).toArray(), [])
+  const settings = useLiveQuery(() => db.settings.get('settings'), [])
+  const weekStartsOn = settings?.weekStartsOn ?? 1
+  const weekdays = weekStartsOn === 1 ? ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'] : ['Вс','Пн','Вт','Ср','Чт','Пт','Сб']
+  const habits = useLiveQuery(() => db.habits.filter(h => h.active && !h.archived).toArray(), [])
   const days = useMemo(() => {
     const first = new Date(month.getFullYear(), month.getMonth(), 1)
     const offset = (first.getDay() - weekStartsOn + 7) % 7
