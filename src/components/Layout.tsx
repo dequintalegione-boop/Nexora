@@ -8,6 +8,7 @@ import {
   BookOpen,
   Repeat,
   Timer,
+  BarChart3,
   Settings,
   Menu,
   X,
@@ -26,6 +27,7 @@ const navItems = [
   { to: '/habits', label: 'Привычки', icon: Repeat },
   { to: '/calendar', label: 'Календарь', icon: Calendar },
   { to: '/timer', label: 'Таймер', icon: Timer },
+  { to: '/analytics', label: 'Аналитика', icon: BarChart3 },
 ]
 
 export function Layout() {
