@@ -21,84 +21,104 @@ export function logMap(logs: HabitLog[]): Map<string, HabitLog> {
 }
 
 export function isScheduled(habit: Habit, date: string): boolean {
-  if (!habit.active) return false
-  const day = weekday(date) // 0 = Sunday
-  return habit.schedule.days.includes(day)
+  if (!habit.active || habit.archived) return false
+  if (habit.startDate && date < habit.startDate) return false
+  if (habit.endDate && date > habit.endDate) return false
+  return habit.schedule.days.includes(weekday(date))
 }
 
 export function isDoneLog(habit: Habit, log: HabitLog | undefined): boolean {
   if (!log || log.skipped) return false
-  if (habit.measurementType === "boolean") return Boolean(log.value)
-  if (habit.targetValue != null) return Number(log.value) >= habit.targetValue
-  return Number(log.value) > 0
+  if (habit.measurementType === "boolean") return log.value === true || log.value === 1
+  const target = habit.targetValue && habit.targetValue > 0 ? habit.targetValue : 1
+  return Number(log.value) >= target
 }
 
 export function isPartialLog(habit: Habit, log: HabitLog | undefined): boolean {
   if (!log || log.skipped || habit.measurementType === "boolean") return false
-  if (habit.targetValue == null) return false
-  const v = Number(log.value)
-  return v > 0 && v < habit.targetValue
+  const target = habit.targetValue && habit.targetValue > 0 ? habit.targetValue : 1
+  const value = Number(log.value)
+  return value > 0 && value < target
 }
 
 export function streak(habit: Habit, logs: Map<string, HabitLog>, today: string): number {
+  let cursor = today
+  if (!isDoneLog(habit, logs.get(logKey(habit.id, today)))) cursor = addDays(today, -1)
   let count = 0
-  let d = today
   for (let i = 0; i < 400; i++) {
-    if (isScheduled(habit, d)) {
-      const log = logs.get(logKey(habit.id, d))
-      if (isDoneLog(habit, log)) count++
-      else break
+    if (habit.startDate && cursor < habit.startDate) break
+    if (!isScheduled(habit, cursor)) {
+      cursor = addDays(cursor, -1)
+      continue
     }
-    d = addDays(d, -1)
+    const log = logs.get(logKey(habit.id, cursor))
+    if (log?.skipped) {
+      cursor = addDays(cursor, -1)
+      continue
+    }
+    if (isDoneLog(habit, log)) {
+      count += 1
+      cursor = addDays(cursor, -1)
+      continue
+    }
+    break
   }
   return count
 }
 
 export function longestStreak(habit: Habit, logs: HabitLog[]): number {
-  const map = logMap(logs)
-  // simple approximation: check last 365 days
-  let best = 0
-  let current = 0
-  const today = new Date().toISOString().slice(0, 10)
-  for (let i = 0; i < 365; i++) {
-    const d = addDays(today, -i)
-    if (!isScheduled(habit, d)) continue
-    if (isDoneLog(habit, map.get(logKey(habit.id, d)))) {
-      current++
-      best = Math.max(best, current)
-    } else {
-      current = 0
-    }
+  const dates = logs
+    .filter((log) => log.habitId === habit.id && isDoneLog(habit, log))
+    .map((log) => log.date)
+    .sort()
+  if (dates.length === 0) return 0
+  let best = 1
+  let run = 1
+  for (let i = 1; i < dates.length; i++) {
+    const prev = dates[i - 1]
+    const cur = dates[i]
+    if (!prev || !cur) continue
+    let expected = addDays(prev, 1)
+    while (expected < cur && !isScheduled(habit, expected)) expected = addDays(expected, 1)
+    if (expected === cur) run += 1
+    else run = 1
+    if (run > best) best = run
   }
   return best
 }
 
 export function regularity(habit: Habit, logs: Map<string, HabitLog>, today: string, days = 30): number {
-  let scheduled = 0
+  let due = 0
   let done = 0
   for (let i = 0; i < days; i++) {
-    const d = addDays(today, -i)
-    if (isScheduled(habit, d)) {
-      scheduled++
-      if (isDoneLog(habit, logs.get(logKey(habit.id, d)))) done++
-    }
+    const date = addDays(today, -i)
+    if (!isScheduled(habit, date)) continue
+    due += 1
+    if (isDoneLog(habit, logs.get(logKey(habit.id, date)))) done += 1
   }
-  return scheduled === 0 ? 0 : Math.round((done / scheduled) * 100)
+  if (due === 0) return 0
+  return Math.round((done / due) * 100)
 }
 
 export function projectProgress(project: Project, tasks: Task[]): number {
-  if (project.progress != null) return project.progress
-  const related = tasks.filter((t) => t.projectId === project.id && !t.archived)
+  if (typeof project.progress === "number") {
+    return Math.max(0, Math.min(100, Math.round(project.progress)))
+  }
+  const related = tasks.filter(
+    (task) => task.projectId === project.id && !task.archived && task.status !== "cancelled",
+  )
   if (related.length === 0) return 0
-  const done = related.filter((t) => t.status === "done").length
+  const done = related.filter((task) => task.status === "done").length
   return Math.round((done / related.length) * 100)
 }
 
 export function isBlocked(task: Task, tasks: Task[]): boolean {
   if (!task.dependsOn?.length) return false
   return task.dependsOn.some((id) => {
-    const dep = tasks.find((t) => t.id === id)
-    return dep && dep.status !== "done" && !dep.archived
+    const dep = tasks.find((item) => item.id === id)
+    // Missing, archived, or cancelled dependencies must not block forever.
+    if (!dep || dep.archived || dep.status === "cancelled") return false
+    return dep.status !== "done"
   })
 }
 
@@ -107,71 +127,168 @@ export function isOpenTask(task: Task): boolean {
 }
 
 export function isTodayTask(task: Task, today: string): boolean {
-  if (task.archived) return false
-  return (
-    task.scheduledDate === today ||
-    task.dueDate === today ||
-    task.status === "in_progress"
-  )
+  if (task.archived || task.status === "cancelled") return false
+  if (task.scheduledDate === today || task.dueDate === today) return true
+  if (task.dueDate && task.dueDate < today && task.status !== "done") return true
+  if (task.status === "in_progress") return true
+  return false
 }
 
-export function dayTaskPool(tasks: Task[], today: string): Task[] {
-  return tasks.filter(
-    (t) =>
-      !t.archived &&
-      (t.scheduledDate === today ||
-        t.dueDate === today ||
-        t.status === "in_progress" ||
-        t.status === "planned")
-  )
+export interface Suggestion {
+  task: Task
+  reasons: string[]
 }
 
 export function suggestTask(
   tasks: Task[],
   today: string,
-  opts: { minutes?: number; energy?: number; skip?: string[] } = {}
-): Task | null {
-  const skip = new Set(opts.skip || [])
-  const candidates = tasks.filter((t) => {
-    if (!isOpenTask(t)) return false
-    if (skip.has(t.id)) return false
-    if (isBlocked(t, tasks)) return false
-    if (opts.minutes && t.estimatedMinutes && t.estimatedMinutes > opts.minutes) return false
-    return true
-  })
-  if (candidates.length === 0) return null
-
-  const scored = candidates.map((t) => {
-    let score = PRIORITY_SCORE[t.priority] * 10
-    if (t.status === "in_progress") score += 25
-    if (t.dueDate && t.dueDate < today) score += 40
-    if (t.dueDate === today) score += 20
-    if (t.scheduledDate === today) score += 15
-    if (opts.energy != null && opts.energy <= 3 && t.priority === "critical") score -= 15
-    return { t, score }
-  })
-  scored.sort((a, b) => b.score - a.score)
-  return scored[0].t
+  options?: { minutes?: number; energy?: number; skip?: string[] },
+): Suggestion | null {
+  const skip = new Set(options?.skip ?? [])
+  let best: { task: Task; reasons: string[]; score: number } | null = null
+  for (const task of tasks) {
+    if (!isOpenTask(task) || skip.has(task.id) || task.status === "waiting") continue
+    if (isBlocked(task, tasks)) continue
+    const reasons: string[] = []
+    let score = PRIORITY_SCORE[task.priority]
+    if (task.priority === "high" || task.priority === "critical") {
+      reasons.push(`приоритет — ${PRIORITY_LABEL[task.priority].toLowerCase()}`)
+    }
+    if (task.dueDate && task.dueDate < today) {
+      score += 6
+      reasons.push("срок уже прошёл")
+    } else if (task.dueDate === today) {
+      score += 4
+      reasons.push("срок сегодня")
+    } else if (task.dueDate && task.dueDate <= addDays(today, 2)) {
+      score += 2
+      reasons.push("срок близко")
+    }
+    if (task.status === "in_progress") {
+      score += 3
+      reasons.push("уже в работе")
+    }
+    if (task.scheduledDate === today) {
+      score += 2
+      reasons.push("стоит в плане на сегодня")
+    }
+    if (options?.minutes && task.estimatedMinutes) {
+      if (task.estimatedMinutes <= options.minutes) {
+        score += 2
+        reasons.push(`укладывается в ${options.minutes} мин`)
+      } else {
+        score -= 4
+        reasons.push("дольше, чем есть времени")
+      }
+    }
+    if (options?.energy !== undefined && options.energy <= 4) {
+      if ((task.estimatedMinutes ?? 30) <= 30) {
+        score += 2
+        reasons.push("короткое дело при низкой энергии")
+      } else score -= 2
+    }
+    if (reasons.length === 0) reasons.push("ничего срочнее не нашлось")
+    const due = task.dueDate ?? "9999-99-99"
+    const bestDue = best?.task.dueDate ?? "9999-99-99"
+    if (!best || score > best.score || (score === best.score && due < bestDue)) {
+      best = { task, reasons: reasons.slice(0, 3), score }
+    }
+  }
+  if (!best) return null
+  return { task: best.task, reasons: best.reasons }
 }
 
-export function habitRate(habit: Habit, logs: Map<string, HabitLog>, today: string, days = 7): number {
-  return regularity(habit, logs, today, days)
+export function dayTaskPool(tasks: Task[], today: string): Task[] {
+  return tasks.filter((task) => {
+    if (task.archived || task.status === "cancelled") return false
+    return task.scheduledDate === today || task.dueDate === today
+  })
+}
+
+export function habitRate(
+  habits: Habit[],
+  logs: Map<string, HabitLog>,
+  date: string,
+): { done: number; due: number } {
+  const dueHabits = habits.filter((habit) => isScheduled(habit, date))
+  const done = dueHabits.filter((habit) => isDoneLog(habit, logs.get(logKey(habit.id, date)))).length
+  return { done, due: dueHabits.length }
 }
 
 export function isStaleProject(project: Project, today: string): boolean {
-  if (project.status !== "active") return false
-  // simple: if no update in 21 days
-  const updated = project.updatedAt?.slice(0, 10)
-  if (!updated) return false
-  return addDays(updated, 21) < today
+  if (project.archived || project.status !== "active") return false
+  const updated = project.updatedAt.slice(0, 10)
+  return updated <= addDays(today, -14)
 }
 
 export function goalNeedsReview(goal: Goal, today: string): boolean {
-  if (goal.status !== "active") return false
-  if (goal.targetDate && goal.targetDate < today) return true
-  return false
+  return goal.status === "active" && !goal.archived && !!goal.targetDate && goal.targetDate < today
+}
+
+export interface Reminder {
+  id: string
+  title: string
+  detail: string
+  to: "/" | "/tasks" | "/journal" | "/habits" | "/goals" | "/projects"
+  taskId?: string
+}
+
+export function buildReminders(input: {
+  tasks: Task[]
+  habits: Habit[]
+  logs: Map<string, HabitLog>
+  entries: DailyEntry[]
+  goals: Goal[]
+  projects: Project[]
+  today: string
+}): Reminder[] {
+  const items: Reminder[] = []
+  for (const task of input.tasks) {
+    if (!isOpenTask(task)) continue
+    if (task.dueDate && task.dueDate < input.today) {
+      items.push({
+        id: `overdue-${task.id}`,
+        title: task.title,
+        detail: "Просрочена",
+        to: "/tasks",
+        taskId: task.id,
+      })
+    }
+  }
+  for (const habit of input.habits) {
+    if (!isScheduled(habit, input.today)) continue
+    if (!isDoneLog(habit, input.logs.get(logKey(habit.id, input.today)))) {
+      items.push({
+        id: `habit-${habit.id}`,
+        title: habit.title,
+        detail: "Привычка на сегодня ещё не отмечена",
+        to: "/habits",
+      })
+    }
+  }
+  for (const goal of input.goals) {
+    if (goalNeedsReview(goal, input.today)) {
+      items.push({
+        id: `goal-${goal.id}`,
+        title: goal.title,
+        detail: "Цель с прошедшим сроком",
+        to: "/goals",
+      })
+    }
+  }
+  for (const project of input.projects) {
+    if (isStaleProject(project, input.today)) {
+      items.push({
+        id: `project-${project.id}`,
+        title: project.title,
+        detail: "Проект давно не обновлялся",
+        to: "/projects",
+      })
+    }
+  }
+  return items.slice(0, 14)
 }
 
 export function entryMood(entries: DailyEntry[], date: string): number | undefined {
-  return entries.find((e) => e.date === date)?.mood
+  return entries.find((entry) => entry.date === date)?.mood
 }
