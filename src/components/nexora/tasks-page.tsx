@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react"
 import { useNexora } from "@/lib/nexora/store"
 import { useUI } from "@/lib/nexora/ui-store"
-import { STATUS_LABEL, PRIORITY_LABEL } from "@/lib/nexora/copy"
+import { getTaskStatusLabels, getTaskPriorityLabels } from "@/lib/nexora/copy"
 import { addDays, isoDate } from "@/lib/nexora/dates"
 import type { TaskStatus, Priority } from "@/lib/nexora/types"
 import { Button, Card, Input, Select, Badge } from "./ui"
@@ -10,6 +10,9 @@ import { parseQuickTaskInput } from "@/lib/nexora/quick-task"
 
 export function TasksPage() {
   const tasks = useNexora((s) => s.tasks)
+  const settings = useNexora((s) => s.settings)
+  const statusLabels = getTaskStatusLabels(settings)
+  const priorityLabels = getTaskPriorityLabels(settings)
   const projects = useNexora((s) => s.projects)
   const addTask = useNexora((s) => s.addTask)
   const setTaskStatus = useNexora((s) => s.setTaskStatus)
@@ -186,13 +189,13 @@ export function TasksPage() {
         )}
         <Select value={filter} onChange={(e) => setFilter(e.target.value as any)}>
           <option value="all">Все статусы</option>
-          {Object.entries(STATUS_LABEL).map(([k, v]) => (
+          {Object.entries(statusLabels).map(([k, v]) => (
             <option key={k} value={k}>{v}</option>
           ))}
         </Select>
         <Select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as any)}>
           <option value="all">Все приоритеты</option>
-          {Object.entries(PRIORITY_LABEL).map(([k, v]) => (
+          {Object.entries(priorityLabels).map(([k, v]) => (
             <option key={k} value={k}>{v}</option>
           ))}
         </Select>
@@ -236,11 +239,11 @@ export function TasksPage() {
           <strong className="text-sm">Выбрано: {selectedCount}</strong>
           <Select value="" onChange={(event) => event.target.value && bulkSetStatus(event.target.value as TaskStatus)}>
             <option value="">Изменить статус...</option>
-            {Object.entries(STATUS_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            {Object.entries(statusLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
           </Select>
           <Select value="" onChange={(event) => event.target.value && bulkSetPriority(event.target.value as Priority)}>
             <option value="">Изменить приоритет...</option>
-            {Object.entries(PRIORITY_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            {Object.entries(priorityLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
           </Select>
           <Button size="sm" variant="secondary" onClick={bulkArchive}>В архив</Button>
           <Button size="sm" variant="ghost" onClick={bulkTrash}>В корзину</Button>
@@ -251,7 +254,7 @@ export function TasksPage() {
 
       {view === "active" && layout === "kanban" ? (
         <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-          {Object.entries(STATUS_LABEL).map(([status, label]) => {
+          {Object.entries(statusLabels).map(([status, label]) => {
             const columnTasks = filtered.filter((task) => task.status === status)
             return (
               <section
@@ -284,7 +287,7 @@ export function TasksPage() {
                       </div>
                       {task.dueDate && <p className="mt-1 text-xs text-muted">Срок: {task.dueDate}</p>}
                       <div className="mt-2 flex flex-wrap items-center gap-1">
-                        <Badge priority={task.priority}>{PRIORITY_LABEL[task.priority]}</Badge>
+                        <Badge priority={task.priority}>{priorityLabels[task.priority]}</Badge>
                         {getDependencyState(task, tasks).isBlocked && <Badge priority="high">Блок</Badge>}
                         {getTaskChildren(tasks, task.id).length > 0 && <span className="text-xs text-muted">Подзадач: {getTaskChildren(tasks, task.id).length}</span>}
                       </div>
@@ -323,10 +326,10 @@ export function TasksPage() {
                     </td>
                     <td className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
                       <Select className="w-36" value={task.status} onChange={(event) => setTaskStatus(task.id, event.target.value as TaskStatus)}>
-                        {Object.entries(STATUS_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                        {Object.entries(statusLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                       </Select>
                     </td>
-                    <td className="px-3 py-3"><Badge priority={task.priority}>{PRIORITY_LABEL[task.priority]}</Badge></td>
+                    <td className="px-3 py-3"><Badge priority={task.priority}>{priorityLabels[task.priority]}</Badge></td>
                     <td className="px-3 py-3 tabular-nums text-muted">{task.dueDate ?? "—"}</td>
                     <td className="px-3 py-3 text-muted">{linkedProjects.map((project) => project.title).join(", ") || "—"}</td>
                   </tr>
@@ -354,7 +357,7 @@ export function TasksPage() {
                 onChange={(e) => setTaskStatus(task.id, e.target.value as TaskStatus)}
                 className="w-36"
               >
-                {Object.entries(STATUS_LABEL).map(([k, v]) => (
+                {Object.entries(statusLabels).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
                 ))}
               </Select>
@@ -367,7 +370,7 @@ export function TasksPage() {
               <div className="flex items-center gap-2">
                 {getDependencyState(task, tasks).isBlocked && <Badge priority="high">Заблокирована</Badge>}
                 {getTaskChildren(tasks, task.id).length > 0 && <span className="text-xs text-muted">↳ {getTaskChildren(tasks, task.id).length}</span>}
-                <Badge priority={task.priority}>{PRIORITY_LABEL[task.priority]}</Badge>
+                <Badge priority={task.priority}>{priorityLabels[task.priority]}</Badge>
               </div>
               {view === "active" && <Button
                 variant="ghost"
