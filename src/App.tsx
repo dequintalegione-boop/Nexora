@@ -11,7 +11,6 @@ import { Timer } from '@/pages/Timer'
 import { Calendar } from '@/pages/Calendar'
 import { Analytics } from '@/pages/Analytics'
 import { Settings } from '@/pages/Settings'
-import { Placeholder } from '@/pages/Placeholder'
 import { ensureDefaults } from '@/db'
 
 export default function App() {
