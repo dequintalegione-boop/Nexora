@@ -10,6 +10,7 @@ import { Habits } from '@/pages/Habits'
 import { Timer } from '@/pages/Timer'
 import { Calendar } from '@/pages/Calendar'
 import { Analytics } from '@/pages/Analytics'
+import { Settings } from '@/pages/Settings'
 import { Placeholder } from '@/pages/Placeholder'
 import { ensureDefaults } from '@/db'
 
@@ -31,7 +32,7 @@ export default function App() {
           <Route path="analytics" element={<Analytics />} />
           <Route path="calendar" element={<Calendar />} />
           <Route path="timer" element={<Timer />} />
-          <Route path="settings" element={<Placeholder />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
     </HashRouter>
