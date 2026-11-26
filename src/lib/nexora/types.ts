@@ -79,6 +79,9 @@ export interface Task {
   recurrenceParentId?: ID
   occurrenceDate?: string
   occurrenceNumber?: number
+  recurrenceStartDate?: string
+  recurrenceStartScheduledDate?: string
+  recurrenceStartDueDate?: string
   reminders?: TaskReminder[]
   links?: TaskLink[]
   contexts?: string[]
