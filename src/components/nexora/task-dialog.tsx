@@ -3,6 +3,7 @@ import { useUI } from "@/lib/nexora/ui-store"
 import { STATUS_LABEL, PRIORITY_LABEL } from "@/lib/nexora/copy"
 import type { TaskStatus, Priority } from "@/lib/nexora/types"
 import { Button, Card, Input, Select, Textarea } from "./ui"
+import { getDependencyState, getTaskChildren } from "@/lib/nexora/task-logic"
 
 export function TaskDialog() {
   const taskId = useUI((s) => s.taskId)
@@ -17,6 +18,8 @@ export function TaskDialog() {
 
   const task = tasks.find((t) => t.id === taskId)
   if (!task) return null
+  const dependencyState = getDependencyState(task, tasks)
+  const children = getTaskChildren(tasks, task.id)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setTaskId(null)}>
@@ -110,8 +113,11 @@ export function TaskDialog() {
               <p className="text-xs text-muted">Пока нет других активных задач</p>
             )}
           </div>
-          {(task.dependsOn ?? []).some((id) => tasks.find((item) => item.id === id)?.status !== "done") && (
-            <p className="text-xs text-amber-400">Задача заблокирована незавершёнными зависимостями</p>
+          {dependencyState.isBlocked && (
+            <p className="text-xs text-amber-400">
+              Заблокирована: {dependencyState.blockedBy.length} незавершённых
+              {dependencyState.missingDependencyIds.length > 0 && `, ${dependencyState.missingDependencyIds.length} отсутствующих связей`}
+            </p>
           )}
         </div>
 
@@ -124,11 +130,11 @@ export function TaskDialog() {
           />
         </div>
 
-        {tasks.some((item) => item.parentId === task.id) && (
+        {children.length > 0 && (
           <div className="rounded-lg border border-white/10 p-3">
             <p className="mb-2 text-xs text-muted">Подзадачи</p>
             <div className="space-y-1">
-              {tasks.filter((item) => item.parentId === task.id).map((child) => (
+              {children.map((child) => (
                 <button key={child.id} type="button" className="block w-full truncate text-left text-sm hover:text-teal-300" onClick={() => setTaskId(child.id)}>
                   {child.status === "done" ? "✓ " : "○ "}{child.title}
                 </button>
