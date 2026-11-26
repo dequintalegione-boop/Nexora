@@ -3,7 +3,10 @@ import { createId, nowISO } from '@/lib/id'
 import type { DailyEntry } from '@/types'
 
 export function todayISODate(): string {
-  const now = new Date()\n  const month = String(now.getMonth() + 1).padStart(2, '0')\n  const day = String(now.getDate()).padStart(2, '0')\n  return now.getFullYear() + '-' + month + '-' + day
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return now.getFullYear() + '-' + month + '-' + day
 }
 
 export function shiftDate(isoDate: string, days: number): string {
