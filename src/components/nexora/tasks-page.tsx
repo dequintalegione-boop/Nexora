@@ -6,6 +6,7 @@ import { addDays, isoDate } from "@/lib/nexora/dates"
 import type { TaskStatus, Priority } from "@/lib/nexora/types"
 import { Button, Card, Input, Select, Badge } from "./ui"
 import { getDependencyState, getTaskChildren } from "@/lib/nexora/task-logic"
+import { parseQuickTaskInput } from "@/lib/nexora/quick-task"
 
 export function TasksPage() {
   const tasks = useNexora((s) => s.tasks)
@@ -115,7 +116,17 @@ export function TasksPage() {
 
   const handleAdd = () => {
     if (!title.trim()) return
-    addTask({ title: title.trim(), status: "inbox", priority: "none" })
+    const draft = parseQuickTaskInput(title, today)
+    if (!draft.title) return
+    addTask({
+      title: draft.title,
+      status: draft.scheduledDate ? "planned" : "inbox",
+      priority: draft.priority,
+      scheduledDate: draft.scheduledDate,
+      dueDate: draft.dueDate,
+      tags: draft.tags,
+      contexts: draft.contexts,
+    })
     setTitle("")
   }
 
@@ -130,12 +141,18 @@ export function TasksPage() {
           <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Новая задача..."
+            placeholder="Например: Позвонить завтра !высокий #работа @офис"
             onKeyDown={(e) => e.key === "Enter" && handleAdd()}
             className="min-w-[200px]"
           />
           {view === "active" && <Button onClick={handleAdd}>Добавить</Button>}
         </div>
+        {view === "active" && (
+          <p className="-mt-3 text-xs text-muted">
+            Дата: сегодня, завтра, послезавтра или ГГГГ-ММ-ДД; срок: до ГГГГ-ММ-ДД;
+            приоритет: !высокий, !средний, !низкий или !критический; метки: #работа; контекст: @офис.
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">
