@@ -110,7 +110,7 @@ export function buildNextTaskOccurrence(task: Task, now: string): Omit<Task, "id
     deletedAt: undefined,
     completedAt: undefined,
     status: "planned",
-    scheduledDate: task.scheduledDate ? shiftField(task.scheduledDate) : nextDate,
+    scheduledDate: shiftField(task.scheduledDate),
     dueDate: shiftField(task.dueDate),
     occurrenceDate: nextDate,
     occurrenceNumber,
