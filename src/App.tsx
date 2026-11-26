@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Layout } from '@/components/Layout'
 import { Dashboard } from '@/pages/Dashboard'
+import { Tasks } from '@/pages/Tasks'
 import { Placeholder } from '@/pages/Placeholder'
 import { ensureDefaults } from '@/db'
 
@@ -15,7 +16,7 @@ export default function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<Dashboard />} />
-          <Route path="tasks" element={<Placeholder />} />
+          <Route path="tasks" element={<Tasks />} />
           <Route path="projects" element={<Placeholder />} />
           <Route path="goals" element={<Placeholder />} />
           <Route path="journal" element={<Placeholder />} />
