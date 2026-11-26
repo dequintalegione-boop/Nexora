@@ -203,7 +203,6 @@ export function CalendarPage() {
             const id = addTask({
               title: value,
               status: "planned",
-              dueDate: selected,
               scheduledDate: selected,
               priority: "none",
             })
