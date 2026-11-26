@@ -334,7 +334,7 @@ export function TasksPage() {
                   const linkedProjects = projects.filter((project) =>
                     (task.projectIds ?? (task.projectId ? [task.projectId] : [])).includes(project.id)
                   )
-                  const cells: Record<TaskTableColumn, React.ReactNode> = {
+                  const cells: Record<TaskTableColumn, ReactNode> = {
                     title: <><div className="font-medium">{task.title}</div>{getDependencyState(task, tasks).isBlocked && <span className="text-xs text-amber-400">Заблокирована</span>}</>,
                     status: <Select className="w-36" value={task.status} onChange={(event) => setTaskStatus(task.id, event.target.value as TaskStatus)}><>{Object.entries(statusLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</></Select>,
                     priority: <Badge priority={task.priority}>{priorityLabels[task.priority]}</Badge>,
