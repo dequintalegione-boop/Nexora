@@ -56,6 +56,7 @@ function emptyData(): Persisted {
 
 type Store = Persisted & {
   hydrated: boolean
+  markHydrated: () => void
   timerIntent: string | null
   loadSeed: (keepPrefs?: boolean) => void
   replaceAll: (data: Persisted) => void
@@ -91,6 +92,7 @@ export const useNexora = create<Store>()(
     (set, get) => ({
       ...emptyData(),
       hydrated: false,
+      markHydrated: () => set({ hydrated: true }),
       timerIntent: null,
 
       loadSeed: (keepPrefs = false) => {
@@ -451,9 +453,7 @@ export const useNexora = create<Store>()(
     {
       name: "nexora-v1",
       onRehydrateStorage: () => (state) => {
-        if (state) {
-          state.hydrated = true
-        }
+        state?.markHydrated()
       },
     }
   )
