@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useNexora } from "@/lib/nexora/store"
-import type { Goal, Horizon, GoalStatus } from "@/lib/nexora/types"
+import type { Horizon } from "@/lib/nexora/types"
 import { Button, Card, Input, Select } from "./ui"
 
 const HORIZON_LABEL: Record<Horizon, string> = {
