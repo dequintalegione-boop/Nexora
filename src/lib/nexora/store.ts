@@ -387,6 +387,7 @@ export const useNexora = create<Store>()(
           activeTimer: {
             kind: input?.kind ?? "focus",
             startedAt: nowISO(),
+            sessionStartedAt: nowISO(),
             taskId: input?.taskId,
             label: input?.title,
             accumulatedMs: 0,
@@ -432,7 +433,7 @@ export const useNexora = create<Store>()(
           createdAt: nowISO(),
           updatedAt: nowISO(),
           kind: timer.kind,
-          startedAt: timer.startedAt,
+          startedAt: timer.sessionStartedAt ?? timer.startedAt,
           endedAt: nowISO(),
           taskId: timer.taskId,
           title: timer.label,
