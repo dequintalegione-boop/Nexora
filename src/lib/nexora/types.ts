@@ -23,26 +23,65 @@ export interface HistoryNote {
   change: string
 }
 
+export type RecurrenceFrequency = "daily" | "weekly" | "monthly" | "yearly"
+
+export interface RecurrenceRule {
+  frequency: RecurrenceFrequency
+  interval: number
+  weekdays?: number[]
+  count?: number
+  until?: string
+}
+
+export interface TaskReminder {
+  id: ID
+  minutesBefore?: number
+  at?: string
+  enabled: boolean
+}
+
+export interface TaskLink {
+  id: ID
+  title: string
+  url: string
+}
+
 export interface Task {
   id: ID
   createdAt: string
   updatedAt: string
   archived?: boolean
+  archivedAt?: string
+  deletedAt?: string
+  completedAt?: string
   title: string
   description?: string
   status: TaskStatus
   priority: Priority
   dueDate?: string
   scheduledDate?: string
+  startAt?: string
+  endAt?: string
+  allDay?: boolean
+  timezone?: string
   projectId?: string
+  projectIds?: ID[]
   directionId?: string
-  parentId?: string
+  parentId?: ID
   dependsOn?: ID[]
   estimatedMinutes?: number
+  estimateMinutes?: number
   actualMinutes?: number
   notes?: string
   repeat?: Repeat
   repeatOf?: ID
+  recurrenceRule?: RecurrenceRule
+  recurrenceParentId?: ID
+  occurrenceDate?: string
+  reminders?: TaskReminder[]
+  links?: TaskLink[]
+  contexts?: string[]
+  customFields?: Record<string, string | number | boolean | null>
   history?: HistoryNote[]
   tags?: string[]
 }
