@@ -10,6 +10,7 @@ import { parseQuickTaskInput } from "@/lib/nexora/quick-task"
 import { createTaskFilterGroup, matchesTaskFilterGroup, type TaskFilterGroup } from "@/lib/nexora/task-filters"
 import { TaskFilterBuilder } from "./task-filter-builder"
 import { getKanbanColumns, getKanbanDropPatch, getKanbanTaskColumnIds } from "@/lib/nexora/kanban"
+import { buildTaskInputFromTemplate, createTaskTemplateFromTask } from "@/lib/nexora/task-templates"
 import type { KanbanGroupBy } from "@/lib/nexora/kanban"
 
 export function TasksPage() {
@@ -33,6 +34,9 @@ export function TasksPage() {
   const toggleTaskTableColumn = useUI((s) => s.toggleTaskTableColumn)
   const kanbanGroupBy = useUI((s) => s.kanbanGroupBy)
   const setKanbanGroupBy = useUI((s) => s.setKanbanGroupBy)
+  const taskTemplates = useUI((s) => s.taskTemplates)
+  const saveTaskTemplate = useUI((s) => s.saveTaskTemplate)
+  const removeTaskTemplate = useUI((s) => s.removeTaskTemplate)
 
   const [view, setView] = useState<"active" | "archive" | "trash">("active")
   const [layout, setLayout] = useState<"list" | "table" | "kanban">("list")
@@ -45,6 +49,10 @@ export function TasksPage() {
   const [search, setSearch] = useState("")
   const [title, setTitle] = useState("")
   const [viewName, setViewName] = useState("")
+  const [templateName, setTemplateName] = useState("")
+  const [templateId, setTemplateId] = useState("")
+  const [bulkScheduledDate, setBulkScheduledDate] = useState("")
+  const [bulkDueDate, setBulkDueDate] = useState("")
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([])
   const [advancedFilter, setAdvancedFilter] = useState<TaskFilterGroup>(() => createTaskFilterGroup())
 
@@ -130,6 +138,39 @@ export function TasksPage() {
     selectedTasks.forEach((task) => removeTask(task.id))
     clearSelection()
   }
+  const bulkSetScheduledDate = (date: string) => {
+    selectedTasks.forEach((task) => updateTask(task.id, { scheduledDate: date || undefined }))
+  }
+  const bulkSetDueDate = (date: string) => {
+    selectedTasks.forEach((task) => updateTask(task.id, { dueDate: date || undefined }))
+  }
+  const bulkSetProject = (projectId: string) => {
+    selectedTasks.forEach((task) => updateTask(task.id, { projectId: projectId || undefined, projectIds: projectId ? [projectId] : [] }))
+    clearSelection()
+  }
+  const handleSaveTemplate = () => {
+    const task = selectedTasks[0]
+    const name = templateName.trim()
+    if (!task || !name) return
+    saveTaskTemplate(createTaskTemplateFromTask(task, name))
+    setTemplateName("")
+  }
+  const createFromTemplate = () => {
+    const template = taskTemplates.find((item) => item.id === templateId)
+    if (!template) return
+    const templateInput = buildTaskInputFromTemplate(template)
+    const activeProjectIds = new Set(projects.filter((project) => !project.archived).map((project) => project.id))
+    templateInput.projectIds = (templateInput.projectIds ?? []).filter((id) => activeProjectIds.has(id))
+    if (templateInput.projectId && !activeProjectIds.has(templateInput.projectId)) {
+      templateInput.projectId = templateInput.projectIds[0]
+    }
+    if (!templateInput.projectId && templateInput.projectIds.length > 0) {
+      templateInput.projectId = templateInput.projectIds[0]
+    }
+    const id = addTask(templateInput)
+    setTaskId(id)
+    setTemplateId("")
+  }
 
   const handleAdd = () => {
     if (!title.trim()) return
@@ -174,6 +215,18 @@ export function TasksPage() {
           </p>
         )}
       </div>
+
+      {view === "active" && taskTemplates.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-white/[0.025] p-3">
+          <span className="text-xs text-muted">Шаблоны задач</span>
+          <Select value={templateId} onChange={(event) => setTemplateId(event.target.value)} className="min-w-48">
+            <option value="">Выберите шаблон...</option>
+            {taskTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+          </Select>
+          <Button size="sm" onClick={createFromTemplate} disabled={!templateId}>Создать задачу</Button>
+          {taskTemplates.map((template) => <Button key={template.id} size="sm" variant="ghost" title={`Удалить шаблон ${template.name}`} onClick={() => removeTaskTemplate(template.id)}>× {template.name}</Button>)}
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <div className="flex flex-wrap gap-1 rounded-lg border border-white/10 p-1">
@@ -274,6 +327,17 @@ export function TasksPage() {
           </Select>
           <Button size="sm" variant="secondary" onClick={bulkArchive}>В архив</Button>
           <Button size="sm" variant="ghost" onClick={bulkTrash}>В корзину</Button>
+          <Select value="" onChange={(event) => event.target.value && bulkSetProject(event.target.value)}>
+            <option value="">Назначить проект...</option>
+            {projects.filter((project) => !project.archived).map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
+          </Select>
+          <label className="flex items-center gap-1 text-xs text-muted">План <input type="date" className="field w-36" value={bulkScheduledDate} onChange={(event) => setBulkScheduledDate(event.target.value)} /></label>
+          <Button size="sm" variant="secondary" onClick={() => bulkSetScheduledDate(bulkScheduledDate)}>Применить план</Button>
+          <Button size="sm" variant="ghost" onClick={() => bulkSetScheduledDate("")}>Очистить план</Button>
+          <label className="flex items-center gap-1 text-xs text-muted">Срок <input type="date" className="field w-36" value={bulkDueDate} onChange={(event) => setBulkDueDate(event.target.value)} /></label>
+          <Button size="sm" variant="secondary" onClick={() => bulkSetDueDate(bulkDueDate)}>Применить срок</Button>
+          <Button size="sm" variant="ghost" onClick={() => bulkSetDueDate("")}>Очистить срок</Button>
+          {selectedCount === 1 && <div className="flex items-center gap-1"><Input value={templateName} onChange={(event) => setTemplateName(event.target.value)} placeholder="Название шаблона" className="w-40" /><Button size="sm" variant="secondary" disabled={!templateName.trim()} onClick={handleSaveTemplate}>Сохранить как шаблон</Button></div>}
           <Button size="sm" variant="ghost" onClick={clearSelection}>Снять выбор</Button>
           <Button size="sm" variant="ghost" onClick={() => setSelectedTaskIds(filtered.map((task) => task.id))}>Выбрать все отфильтрованные</Button>
         </div>
