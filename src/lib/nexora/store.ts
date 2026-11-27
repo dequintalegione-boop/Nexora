@@ -209,7 +209,7 @@ export const useNexora = create<Store>()(
         set((s) => {
           const now = nowISO()
           const current = s.tasks.find((task) => task.id === id)
-          if (!current) return s
+          if (!current || current.status === status) return s
 
           const nextTasks = s.tasks.map((task) =>
             task.id === id
