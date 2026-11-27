@@ -771,8 +771,7 @@ Nexora должен использовать свой аналитический
 - pomodoro.completed;
 - pomodoro.interrupted;
 - reminder.triggered;
-- calendar.sync.completed;
-- calendar.sync.failed.
+- reminder.triggered.
 
 У события должны быть ID, время, сущность, before/after, источник, correlationId и безопасные метаданные. События нельзя публиковать как успешные до подтверждённого сохранения данных.
 
@@ -967,24 +966,6 @@ TaskNotes поддерживает интерфейс на нескольких 
 
 **Готово, когда:** перезапуск не сбрасывает таймер, а один интервал не записывается дважды.
 
-### Этап 10. Календарные интеграции
-- Сначала реализовать ICS import/export.
-- Затем Google Calendar OAuth и provider.
-- Затем Microsoft Outlook provider.
-- Добавить incremental sync, conflict resolution, retry/backoff и журнал.
-- Добавить безопасное хранение токенов на host.
-
-**Готово, когда:** локальные задачи не теряются при ошибках внешнего API, а синхронизация идемпотентна.
-
-### Этап 11. API, события, webhooks и MCP
-- Версионировать HTTP API.
-- Открыть операции задач, времени, Pomodoro и календаря.
-- Добавить webhook registry, HMAC, retries и delivery history.
-- Добавить ограниченный runtime API и capabilities.
-- Добавить MCP-инструменты с явными разрешениями.
-
-**Готово, когда:** UI и API используют один сервис, а внешние действия имеют проверяемые права и аудит.
-
 ### Этап 12. Автоматизации, шаблоны и расширенные настройки
 - Добавить конструктор правил.
 - Добавить ограничения циклов и повторного запуска.
@@ -1055,7 +1036,6 @@ TaskNotes поддерживает интерфейс на нескольких 
 - повторный запуск после пропуска;
 - отключённые разрешения уведомлений;
 - закрытая вкладка/браузер и host off/on;
-- истёкший OAuth token;
 - отзыв доступа;
 - rate limit и недоступность Google/Microsoft;
 - конфликт локального и внешнего события;
@@ -1112,14 +1092,11 @@ TaskNotes поддерживает интерфейс на нескольких 
 - Повторяющиеся задачи: https://tasknotes.dev/obsidian/features/recurring-tasks/
 - Напоминания: https://tasknotes.dev/obsidian/features/reminders/
 - Учёт времени и Pomodoro: https://tasknotes.dev/obsidian/features/time-management/
-- Интеграции календарей: https://tasknotes.dev/obsidian/features/calendar-integration/
 - Пользовательские поля: https://tasknotes.dev/obsidian/features/user-fields/
 - Представления: https://tasknotes.dev/obsidian/views/
 - Основные концепции и модель данных: https://tasknotes.dev/obsidian/core-concepts/
 - Настройки полей: https://tasknotes.dev/obsidian/settings/task-properties/
-- Настройки интеграций: https://tasknotes.dev/obsidian/settings/integrations/
 - HTTP API: https://tasknotes.dev/obsidian/HTTP_API/
-- Webhooks: https://tasknotes.dev/obsidian/webhooks/
 - JavaScript Runtime API: https://tasknotes.dev/obsidian/javascript-api/
 - Формальная спецификация модели и операций: https://tasknotes.dev/developers/specification/
 
