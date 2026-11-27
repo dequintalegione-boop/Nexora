@@ -33,6 +33,19 @@ export const TASK_TABLE_COLUMN_LABELS: Record<TaskTableColumn, string> = {
   updatedAt: "Изменено",
 }
 
+export type TaskTemplate = {
+  id: string
+  name: string
+  title: string
+  description?: string
+  priority: Priority
+  estimatedMinutes?: number
+  projectId?: string
+  tags?: string[]
+  contexts?: string[]
+  links?: { id: string; title: string; url: string }[]
+}
+
 export type SavedTaskView = {
   id: string
   name: string
@@ -53,11 +66,14 @@ type UIState = {
   savedTaskViews: SavedTaskView[]
   taskTableColumns: TaskTableColumn[]
   kanbanGroupBy: KanbanGroupBy
+  taskTemplates: TaskTemplate[]
   setTaskId: (id: string | null) => void
   saveTaskView: (view: Omit<SavedTaskView, "id">) => void
   removeTaskView: (id: string) => void
   toggleTaskTableColumn: (column: TaskTableColumn) => void
   setKanbanGroupBy: (groupBy: KanbanGroupBy) => void
+  saveTaskTemplate: (template: Omit<TaskTemplate, "id">) => void
+  removeTaskTemplate: (id: string) => void
 }
 
 export const useUI = create<UIState>()(
@@ -67,6 +83,7 @@ export const useUI = create<UIState>()(
       savedTaskViews: [],
       taskTableColumns: DEFAULT_TASK_TABLE_COLUMNS,
       kanbanGroupBy: "status",
+      taskTemplates: [],
       setTaskId: (taskId) => set({ taskId }),
       saveTaskView: (view) => set((state) => ({
         savedTaskViews: [
@@ -78,6 +95,12 @@ export const useUI = create<UIState>()(
         savedTaskViews: state.savedTaskViews.filter((view) => view.id !== id),
       })),
       setKanbanGroupBy: (kanbanGroupBy) => set({ kanbanGroupBy }),
+      saveTaskTemplate: (template) => set((state) => ({
+        taskTemplates: [...state.taskTemplates, { ...template, id: `template_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}` }],
+      })),
+      removeTaskTemplate: (id) => set((state) => ({
+        taskTemplates: state.taskTemplates.filter((template) => template.id !== id),
+      })),
       toggleTaskTableColumn: (column) => set((state) => {
         const current = state.taskTableColumns ?? DEFAULT_TASK_TABLE_COLUMNS
         if (current.includes(column)) {
@@ -93,12 +116,14 @@ export const useUI = create<UIState>()(
         savedTaskViews: state.savedTaskViews,
         taskTableColumns: state.taskTableColumns,
         kanbanGroupBy: state.kanbanGroupBy,
+        taskTemplates: state.taskTemplates,
       }),
       merge: (persisted, current) => ({
         ...current,
         ...(persisted as Partial<UIState>),
         taskTableColumns: (persisted as Partial<UIState>).taskTableColumns ?? DEFAULT_TASK_TABLE_COLUMNS,
         kanbanGroupBy: (persisted as Partial<UIState>).kanbanGroupBy ?? "status",
+        taskTemplates: (persisted as Partial<UIState>).taskTemplates ?? [],
       }),
     },
   ),
