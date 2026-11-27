@@ -867,3 +867,25 @@
     width: min(18.5rem, calc(100vw - 2rem));
   }
 }
+
+
+.nexora-calendar-agenda-scroll {
+  max-height: min(72vh, 58rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(255, 255, 255, .17) transparent;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.nexora-calendar-agenda-sentinel {
+  height: 1px;
+  min-height: 1px;
+  pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .nexora-calendar-agenda-scroll {
+    max-height: 68vh;
+  }
+}

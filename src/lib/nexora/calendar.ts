@@ -267,3 +267,16 @@ export function getCalendarDayActivity(
 
   return result
 }
+
+
+/** Return the next agenda chunk size without exceeding the view's bounded day window. */
+export function getAgendaLoadIncrement(
+  currentCount: number,
+  chunkSize = 7,
+  maxDays = 365,
+): number {
+  const current = Number.isFinite(currentCount) ? Math.max(0, Math.floor(currentCount)) : 0
+  const chunk = Number.isFinite(chunkSize) ? Math.max(1, Math.floor(chunkSize)) : 7
+  const maximum = Number.isFinite(maxDays) ? Math.max(0, Math.floor(maxDays)) : 365
+  return Math.max(0, Math.min(chunk, maximum - current))
+}

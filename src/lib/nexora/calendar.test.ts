@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { getCalendarCreatePatch, getCalendarDayActivity, getCalendarDayDropPatch, getCalendarDropMinutes, getCalendarDropPatch, getCalendarResizePatch, getCalendarSelectionRange, getCalendarSessionRange, getCalendarTaskTime, layoutCalendarEvents } from "./calendar.ts"
+import { getAgendaLoadIncrement, getCalendarCreatePatch, getCalendarDayActivity, getCalendarDayDropPatch, getCalendarDropMinutes, getCalendarDropPatch, getCalendarResizePatch, getCalendarSelectionRange, getCalendarSessionRange, getCalendarTaskTime, layoutCalendarEvents } from "./calendar.ts"
 import type { Task, TimeSession } from "./types.ts"
 
 const task: Task = {
@@ -186,4 +186,14 @@ test("mini calendar activity de-duplicates tasks and ignores dates outside the d
     timeBlocks: 0,
     sessions: 0,
   })
+})
+
+
+test("agenda chunk loading adds seven days but never exceeds the 365-day window", () => {
+  assert.equal(getAgendaLoadIncrement(0), 7)
+  assert.equal(getAgendaLoadIncrement(358), 7)
+  assert.equal(getAgendaLoadIncrement(364), 1)
+  assert.equal(getAgendaLoadIncrement(365), 0)
+  assert.equal(getAgendaLoadIncrement(500), 0)
+  assert.equal(getAgendaLoadIncrement(0, 10, 25), 10)
 })
