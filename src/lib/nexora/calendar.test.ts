@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { getCalendarDropPatch, getCalendarTaskTime } from "./calendar.ts"
+import { getCalendarDayDropPatch, getCalendarDropPatch, getCalendarTaskTime } from "./calendar.ts"
 import type { Task } from "./types.ts"
 
 const task: Task = {
