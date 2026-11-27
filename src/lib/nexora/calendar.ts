@@ -214,7 +214,7 @@ export function getCalendarFitPixelsPerHour(
   const availableHeight = containerHeight - fixedHeight
   const pixelsPerHour = Math.floor(availableHeight / hours)
   if (!Number.isFinite(pixelsPerHour) || pixelsPerHour < 20) return null
-  return Math.min(132, pixelsPerHour)
+  return pixelsPerHour
 }
 
 /** Convert a pointer position inside a day column to the nearest visible time slot. */
