@@ -149,6 +149,7 @@ export function CalendarPage() {
   const agendaTopSentinelRef = useRef<HTMLDivElement | null>(null)
   const agendaBottomSentinelRef = useRef<HTMLDivElement | null>(null)
   const agendaPrependHeightRef = useRef<number | null>(null)
+  const agendaProgrammaticScrollRef = useRef(false)
   const [miniCalendarOpen, setMiniCalendarOpen] = useState(false)
   const [slotStartHour, setSlotStartHour] = useState(6)
   const [slotEndHour, setSlotEndHour] = useState(22)
@@ -208,7 +209,7 @@ export function CalendarPage() {
 
     let previousObserver: IntersectionObserver | null = null
     const topSentinel = agendaTopSentinelRef.current
-    if (agendaHasScrolled && topSentinel) {
+    if (agendaHasScrolled && root.scrollHeight > root.clientHeight + 2 && topSentinel) {
       previousObserver = new IntersectionObserver((entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return
         if (agendaPrependHeightRef.current !== null) return
@@ -230,10 +231,12 @@ export function CalendarPage() {
   useEffect(() => {
     const previousHeight = agendaPrependHeightRef.current
     if (previousHeight === null) return
+    agendaProgrammaticScrollRef.current = true
     const frame = window.requestAnimationFrame(() => {
       const container = agendaScrollRef.current
       if (container) container.scrollTop += container.scrollHeight - previousHeight
       agendaPrependHeightRef.current = null
+      window.requestAnimationFrame(() => { agendaProgrammaticScrollRef.current = false })
     })
     return () => window.cancelAnimationFrame(frame)
   }, [agendaStartDate, agendaDayCount])
@@ -477,6 +480,14 @@ export function CalendarPage() {
     return `${format(parseISODate(listDays[0]), "d MMM", { locale: ru })} – ${format(parseISODate(listDays[LIST_DAYS - 1]), "d MMM yyyy", { locale: ru })}`
   }, [view, cursor, weekDays, visibleWeekDays, customDays, selected, listDays, agendaDays])
 
+  const resetAgendaScrollPosition = () => {
+    agendaProgrammaticScrollRef.current = true
+    window.requestAnimationFrame(() => {
+      if (agendaScrollRef.current) agendaScrollRef.current.scrollTop = 0
+      window.requestAnimationFrame(() => { agendaProgrammaticScrollRef.current = false })
+    })
+  }
+
   const shift = (direction: -1 | 1) => {
     if (view === "agenda") {
       const next = addDays(agendaStartDate, direction * agendaDayCount)
@@ -488,9 +499,7 @@ export function CalendarPage() {
       setSelectedSlot(null)
       const parsed = parseISODate(next)
       setCursor({ year: parsed.getFullYear(), month: parsed.getMonth() })
-      window.requestAnimationFrame(() => {
-        if (agendaScrollRef.current) agendaScrollRef.current.scrollTop = 0
-      })
+      resetAgendaScrollPosition()
       return
     }
     if (view === "year") {
@@ -523,9 +532,7 @@ export function CalendarPage() {
     agendaPrependHeightRef.current = null
     setCursor({ year: now.getFullYear(), month: now.getMonth() })
     setSelectedSlot(null)
-    window.requestAnimationFrame(() => {
-      if (agendaScrollRef.current) agendaScrollRef.current.scrollTop = 0
-    })
+    resetAgendaScrollPosition()
   }
 
   const setCalendarView = (nextView: CalendarView) => {
@@ -540,9 +547,7 @@ export function CalendarPage() {
     const date = parseISODate(selected)
     setCursor({ year: date.getFullYear(), month: date.getMonth() })
     if (nextView === "agenda") {
-      window.requestAnimationFrame(() => {
-        if (agendaScrollRef.current) agendaScrollRef.current.scrollTop = 0
-      })
+      resetAgendaScrollPosition()
     }
   }
 
@@ -553,7 +558,6 @@ export function CalendarPage() {
     if (container && agendaPrependHeightRef.current === null) agendaPrependHeightRef.current = container.scrollHeight
     setAgendaStartDate((start) => addDays(start, -increment))
     setAgendaDayCount((count) => Math.min(365, count + increment))
-    setAgendaHasScrolled(true)
   }
 
   const loadNextAgendaDays = () => {
@@ -1202,9 +1206,7 @@ export function CalendarPage() {
     setShowComposer(false)
     const date = parseISODate(day)
     setCursor({ year: date.getFullYear(), month: date.getMonth() })
-    window.requestAnimationFrame(() => {
-      if (agendaScrollRef.current) agendaScrollRef.current.scrollTop = 0
-    })
+    resetAgendaScrollPosition()
   }
 
   const shiftMiniCalendarMonth = (direction: -1 | 1) => {
@@ -1686,7 +1688,9 @@ export function CalendarPage() {
           <div
             ref={agendaScrollRef}
             className="nexora-calendar-agenda-scroll"
-            onScroll={() => setAgendaHasScrolled(true)}
+            onScroll={() => {
+              if (!agendaProgrammaticScrollRef.current) setAgendaHasScrolled(true)
+            }}
           >
             <div ref={agendaTopSentinelRef} className="nexora-calendar-agenda-sentinel" aria-hidden="true" />
             <div className="nexora-calendar-agenda divide-y divide-white/[0.08]">
