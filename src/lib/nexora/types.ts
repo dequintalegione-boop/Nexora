@@ -38,6 +38,8 @@ export interface TaskReminder {
   minutesBefore?: number
   at?: string
   enabled: boolean
+  anchor?: "start" | "due"
+  lastTriggeredAt?: string
 }
 
 export interface TaskLink {
@@ -207,6 +209,7 @@ export interface ActiveTimer {
 export interface Settings {
   taskStatusLabels?: Partial<Record<TaskStatus, string>>
   taskPriorityLabels?: Partial<Record<Priority, string>>
+  notificationsEnabled?: boolean
   initialized: boolean
   theme: ThemeMode
   accent: string

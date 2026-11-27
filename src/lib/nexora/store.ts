@@ -38,6 +38,7 @@ export function defaultSettings(): Settings {
     weekStartsOn: 1,
     widgetOrder: WIDGETS.map((w) => w.id),
     hiddenWidgets: [],
+    notificationsEnabled: false,
   }
 }
 

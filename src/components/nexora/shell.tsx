@@ -2,6 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router"
 import { type ReactNode } from "react"
 import { useNexora } from "@/lib/nexora/store"
 import { TaskDialog } from "./task-dialog"
+import { ReminderScheduler } from "./reminder-scheduler"
 import { cn } from "@/lib/cn"
 
 const NAV = [
@@ -49,6 +50,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-[#0f0f12] text-white flex">
+      <ReminderScheduler />
       {/* Sidebar */}
       <aside className="hidden md:flex w-56 flex-col border-r border-white/10 p-4 gap-1">
         <div className="text-lg font-semibold px-2 mb-4">Nexora</div>
