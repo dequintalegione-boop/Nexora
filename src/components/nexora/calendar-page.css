@@ -1145,3 +1145,37 @@
     display: inline;
   }
 }
+
+
+.nexora-calendar-fit-button {
+  display: inline-flex;
+  min-height: 1.55rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--nexora-calendar-line);
+  border-radius: 4px;
+  background: #242628;
+  color: rgba(226, 232, 240, .7);
+  padding: .15rem .5rem;
+  font-size: .65rem;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.nexora-calendar-fit-button:hover,
+.nexora-calendar-fit-button[aria-pressed="true"] {
+  border-color: rgba(56, 168, 239, .38);
+  background: rgba(56, 168, 239, .12);
+  color: #a4d8ff;
+}
+
+.nexora-calendar-fit-button:focus-visible,
+.nexora-calendar-zoom button:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, .9);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .nexora-calendar-fit-button {
+    min-height: 1.9rem;
+  }
+}
