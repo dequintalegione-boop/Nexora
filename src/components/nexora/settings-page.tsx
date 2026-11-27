@@ -210,7 +210,7 @@ export function SettingsPage() {
             <Input type={actionType === "set_due_offset" ? "number" : "text"} value={actionValue} onChange={(event) => setActionValue(event.target.value)} placeholder={actionType === "set_due_offset" ? "Количество дней" : "Значение"} />
           )}
         </div>
-        <Button size="sm" onClick={createAutomation} disabled={!ruleName.trim() || !actionValue.trim()}>Создать правило</Button>
+        <Button size="sm" onClick={createAutomation} disabled={!ruleName.trim() || !actionValue.trim() || (conditionField !== "none" && !conditionValue.trim())}>Создать правило</Button>
         <div className="space-y-2">
           {automationRules.length === 0 ? <p className="text-xs text-muted">Пока нет правил автоматизации.</p> : automationRules.map((rule) => (
             <div key={rule.id} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
