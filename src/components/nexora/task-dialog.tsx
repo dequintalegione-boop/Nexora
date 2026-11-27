@@ -237,8 +237,8 @@ export function TaskDialog() {
                   String(today.getDate()).padStart(2, "0"),
                 ].join("-")
                 const recurrenceStartDate = hadRule
-                  ? task.recurrenceStartDate ?? task.occurrenceDate ?? task.scheduledDate ?? task.dueDate ?? localToday
-                  : task.occurrenceDate ?? task.scheduledDate ?? task.dueDate ?? localToday
+                  ? task.recurrenceStartDate ?? task.occurrenceDate ?? task.scheduledDate ?? task.dueDate ?? task.startAt?.slice(0, 10) ?? localToday
+                  : task.occurrenceDate ?? task.scheduledDate ?? task.dueDate ?? task.startAt?.slice(0, 10) ?? localToday
                 updateTask(task.id, {
                   repeat: frequency === "daily" || frequency === "weekly" ? frequency : undefined,
                   recurrenceParentId: frequency && !hadRule ? undefined : task.recurrenceParentId,

@@ -357,6 +357,17 @@ test("next occurrence uses immutable DTSTART, ordinal BYDAY and EXDATE", () => {
   assert.equal(next?.recurrenceStartEndAt, "2026-01-05T10:30:00.000Z")
 })
 
+test("calendar expansion supports recurring tasks whose only date anchor is startAt", () => {
+  const timed = task("timed-series", {
+    startAt: "2026-02-01T09:30:00.000Z",
+    endAt: "2026-02-01T10:30:00.000Z",
+    recurrenceRule: { frequency: "daily", interval: 1, count: 2 },
+  })
+  const expanded = expandTaskOccurrences([timed], "2026-02-01", "2026-02-02")
+  assert.deepEqual(expanded.map((item) => item.occurrenceDate), ["2026-02-01", "2026-02-02"])
+  assert.equal(expanded[1]?.task.startAt, "2026-02-02T09:30:00.000Z")
+})
+
 test("calendar expansion returns virtual dates without materializing persisted tasks", () => {
   const root = task("series", {
     scheduledDate: "2026-01-01",

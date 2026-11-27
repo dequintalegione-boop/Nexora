@@ -186,7 +186,7 @@ export const useNexora = create<Store>()(
           input.repeat ? { frequency: input.repeat, interval: 1 } : undefined
         )
         const recurrenceStartDate = recurrenceRule
-          ? input.recurrenceStartDate ?? input.occurrenceDate ?? input.scheduledDate ?? input.dueDate ?? localDateISO()
+          ? input.recurrenceStartDate ?? input.occurrenceDate ?? input.scheduledDate ?? input.dueDate ?? input.startAt?.slice(0, 10) ?? localDateISO()
           : input.recurrenceStartDate
         const task: Task = {
           id,

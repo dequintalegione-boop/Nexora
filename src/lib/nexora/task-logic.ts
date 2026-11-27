@@ -1,5 +1,5 @@
 import type { RecurrenceRule, Task } from "./types"
-import { getNextRecurrenceOccurrence } from "./recurrence"
+import { getNextRecurrenceOccurrence } from "./recurrence.ts"
 
 export interface DependencyState {
   blockedBy: Task[]
@@ -77,7 +77,7 @@ export function buildNextTaskOccurrence(task: Task, now: string): Omit<Task, "id
   if (!rule) return null
   if (rule.count != null && (task.occurrenceNumber ?? 1) >= rule.count) return null
 
-  const baseDate = task.recurrenceStartDate ?? task.occurrenceDate ?? task.scheduledDate ?? task.dueDate ?? now.slice(0, 10)
+  const baseDate = task.recurrenceStartDate ?? task.occurrenceDate ?? task.scheduledDate ?? task.dueDate ?? task.startAt?.slice(0, 10) ?? now.slice(0, 10)
   const currentOccurrenceDate = task.occurrenceDate ?? baseDate
   const nextOccurrence = getNextRecurrenceOccurrence(
     rule,

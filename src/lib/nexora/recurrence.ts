@@ -284,7 +284,7 @@ export function expandTaskOccurrences(
   for (const root of roots) {
     if (root.deletedAt || root.archived) continue
     const rule = taskRule(root)!
-    const startDate = root.recurrenceStartDate ?? root.occurrenceDate ?? root.scheduledDate ?? root.dueDate
+    const startDate = root.recurrenceStartDate ?? root.occurrenceDate ?? root.scheduledDate ?? root.dueDate ?? root.startAt?.slice(0, 10)
     if (!startDate) continue
 
     const scheduledAnchor = root.recurrenceStartScheduledDate ?? root.scheduledDate
