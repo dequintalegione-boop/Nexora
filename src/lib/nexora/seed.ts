@@ -41,6 +41,8 @@ export function buildSeed(): Persisted {
     ],
     sessions: [],
     activeTimer: null,
+    automationRules: [],
+    automationRuns: [],
     settings: {
       ...defaultSettings(),
       initialized: true,

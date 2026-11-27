@@ -1,4 +1,6 @@
+import { useState } from "react"
 import { useNexora } from "@/lib/nexora/store"
+import type { AutomationAction, AutomationCondition, AutomationTrigger } from "@/lib/nexora/automations"
 import type { ThemeMode, TaskStatus, Priority } from "@/lib/nexora/types"
 import { STATUS_LABEL, PRIORITY_LABEL } from "@/lib/nexora/copy"
 import { Button, Card, Input, Select } from "./ui"
@@ -7,7 +9,39 @@ export function SettingsPage() {
   const settings = useNexora((s) => s.settings)
   const updateSettings = useNexora((s) => s.updateSettings)
   const loadSeed = useNexora((s) => s.loadSeed)
-  const replaceAll = useNexora((s) => s.replaceAll)
+  const automationRules = useNexora((s) => s.automationRules ?? [])
+  const automationRuns = useNexora((s) => s.automationRuns ?? [])
+  const projects = useNexora((s) => s.projects)
+  const addAutomationRule = useNexora((s) => s.addAutomationRule)
+  const updateAutomationRule = useNexora((s) => s.updateAutomationRule)
+  const removeAutomationRule = useNexora((s) => s.removeAutomationRule)
+  const [ruleName, setRuleName] = useState("")
+  const [trigger, setTrigger] = useState<AutomationTrigger>("task.created")
+  const [actionType, setActionType] = useState<AutomationAction["type"]>("set_priority")
+  const [actionValue, setActionValue] = useState("high")
+  const [conditionField, setConditionField] = useState<"none" | "status" | "priority" | "project" | "tag" | "title">("none")
+  const [conditionValue, setConditionValue] = useState("")
+
+  const createAutomation = () => {
+    const name = ruleName.trim()
+    if (!name) return
+    let action: AutomationAction
+    if (actionType === "set_status") action = { type: actionType, value: actionValue as TaskStatus }
+    else if (actionType === "set_priority") action = { type: actionType, value: actionValue as Priority }
+    else if (actionType === "set_due_offset") action = { type: actionType, days: Number(actionValue) }
+    else action = { type: actionType, value: actionValue }
+    let condition: AutomationCondition | undefined
+    if (conditionField !== "none" && conditionValue.trim()) {
+      if (conditionField === "status") condition = { field: "status", operator: "is", value: conditionValue as TaskStatus }
+      else if (conditionField === "priority") condition = { field: "priority", operator: "is", value: conditionValue as Priority }
+      else if (conditionField === "project") condition = { field: "project", operator: "is", value: conditionValue }
+      else if (conditionField === "tag") condition = { field: "tag", operator: "contains", value: conditionValue }
+      else condition = { field: "title", operator: "contains", value: conditionValue }
+    }
+    addAutomationRule({ name, enabled: true, trigger, conditions: condition ? [condition] : [], action })
+    setRuleName("")
+    setConditionValue("")
+  }
 
   const exportBackup = () => {
     const data = useNexora.getState()
@@ -24,6 +58,8 @@ export function SettingsPage() {
       sessions: data.sessions,
       activeTimer: data.activeTimer,
       settings: data.settings,
+      automationRules: data.automationRules ?? [],
+      automationRuns: data.automationRuns ?? [],
     }
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" })
     const url = URL.createObjectURL(blob)
@@ -106,6 +142,100 @@ export function SettingsPage() {
           ))}
         </div>
         <Button size="sm" variant="secondary" onClick={() => updateSettings({ taskStatusLabels: {}, taskPriorityLabels: {} })}>Сбросить названия</Button>
+      </Card>
+      <Card className="p-4 space-y-4">
+        <div>
+          <h2 className="font-medium">Автоматизации задач</h2>
+          <p className="mt-1 text-xs text-muted">Локальные правила: событие → условие → действие. Выполняются внутри Nexora без подключения внешних сервисов.</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Input value={ruleName} onChange={(event) => setRuleName(event.target.value)} placeholder="Название правила" />
+          <Select value={trigger} onChange={(event) => setTrigger(event.target.value as AutomationTrigger)}>
+            <option value="task.created">При создании задачи</option>
+            <option value="task.status_changed">При смене статуса</option>
+            <option value="task.completed">При завершении задачи</option>
+          </Select>
+          <Select value={conditionField} onChange={(event) => setConditionField(event.target.value as typeof conditionField)}>
+            <option value="none">Без дополнительного условия</option>
+            <option value="status">Статус задачи</option>
+            <option value="priority">Приоритет задачи</option>
+            <option value="project">Проект</option>
+            <option value="tag">Метка</option>
+            <option value="title">Название содержит</option>
+          </Select>
+          {conditionField === "status" ? (
+            <Select value={conditionValue} onChange={(event) => setConditionValue(event.target.value)}>
+              <option value="">Выберите статус</option>
+              {(["inbox", "planned", "in_progress", "waiting", "done", "cancelled"] as TaskStatus[]).map((value) => <option key={value} value={value}>{STATUS_LABEL[value]}</option>)}
+            </Select>
+          ) : conditionField === "priority" ? (
+            <Select value={conditionValue} onChange={(event) => setConditionValue(event.target.value)}>
+              <option value="">Выберите приоритет</option>
+              {(["none", "low", "medium", "high", "critical"] as Priority[]).map((value) => <option key={value} value={value}>{PRIORITY_LABEL[value]}</option>)}
+            </Select>
+          ) : conditionField === "project" ? (
+            <Select value={conditionValue} onChange={(event) => setConditionValue(event.target.value)}>
+              <option value="">Выберите проект</option>
+              {projects.filter((project) => !project.archived).map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
+            </Select>
+          ) : (
+            <Input value={conditionValue} onChange={(event) => setConditionValue(event.target.value)} placeholder={conditionField === "tag" ? "Название метки" : conditionField === "title" ? "Фрагмент названия" : "Не требуется"} disabled={conditionField === "none"} />
+          )}
+          <Select value={actionType} onChange={(event) => {
+            const value = event.target.value as AutomationAction["type"]
+            setActionType(value)
+            setActionValue(value === "set_status" ? "planned" : value === "set_priority" ? "high" : value === "set_due_offset" ? "1" : "")
+          }}>
+            <option value="set_status">Изменить статус</option>
+            <option value="set_priority">Изменить приоритет</option>
+            <option value="assign_project">Назначить проект</option>
+            <option value="add_tag">Добавить метку</option>
+            <option value="remove_tag">Убрать метку</option>
+            <option value="set_due_offset">Установить срок через N дней</option>
+          </Select>
+          {actionType === "set_status" ? (
+            <Select value={actionValue} onChange={(event) => setActionValue(event.target.value)}>
+              {(["inbox", "planned", "in_progress", "waiting", "done", "cancelled"] as TaskStatus[]).map((value) => <option key={value} value={value}>{STATUS_LABEL[value]}</option>)}
+            </Select>
+          ) : actionType === "set_priority" ? (
+            <Select value={actionValue} onChange={(event) => setActionValue(event.target.value)}>
+              {(["none", "low", "medium", "high", "critical"] as Priority[]).map((value) => <option key={value} value={value}>{PRIORITY_LABEL[value]}</option>)}
+            </Select>
+          ) : actionType === "assign_project" ? (
+            <Select value={actionValue} onChange={(event) => setActionValue(event.target.value)}>
+              <option value="">Выберите проект</option>
+              {projects.filter((project) => !project.archived).map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
+            </Select>
+          ) : (
+            <Input type={actionType === "set_due_offset" ? "number" : "text"} value={actionValue} onChange={(event) => setActionValue(event.target.value)} placeholder={actionType === "set_due_offset" ? "Количество дней" : "Значение"} />
+          )}
+        </div>
+        <Button size="sm" onClick={createAutomation} disabled={!ruleName.trim() || !actionValue.trim() || (conditionField !== "none" && !conditionValue.trim())}>Создать правило</Button>
+        <div className="space-y-2">
+          {automationRules.length === 0 ? <p className="text-xs text-muted">Пока нет правил автоматизации.</p> : automationRules.map((rule) => (
+            <div key={rule.id} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{rule.name}</p>
+                <p className="text-xs text-muted">{rule.trigger === "task.created" ? "Создание задачи" : rule.trigger === "task.completed" ? "Завершение задачи" : "Смена статуса"} · {rule.action.type.replaceAll("_", " ")}</p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button size="sm" variant="secondary" onClick={() => updateAutomationRule(rule.id, { enabled: !rule.enabled })}>{rule.enabled ? "Вкл." : "Выкл."}</Button>
+                <Button size="sm" variant="ghost" onClick={() => removeAutomationRule(rule.id)}>Удалить</Button>
+              </div>
+            </div>
+          ))}
+        </div>
+        {automationRuns.length > 0 && (
+          <div className="space-y-2 border-t border-border pt-3">
+            <h3 className="text-sm font-medium">История запусков</h3>
+            {automationRuns.slice(0, 10).map((run) => (
+              <div key={run.id} className="flex items-center justify-between gap-2 text-xs">
+                <span className="min-w-0 truncate">{automationRules.find((rule) => rule.id === run.ruleId)?.name ?? "Удалённое правило"} · {run.message}</span>
+                <span className={run.result === "success" ? "text-emerald-500" : "text-muted"}>{run.result === "success" ? "Выполнено" : "Пропуск"}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
       <Card className="p-4 space-y-3">
         <div>
