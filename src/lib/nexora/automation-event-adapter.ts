@@ -42,10 +42,14 @@ function isWithinDueSoonWindow(task: Task, rule: TaskAutomationRule, occurredAt:
  */
 export class TaskAutomationEventAdapter {
   private unsubscribe: (() => void) | undefined
-  constructor(
-    private readonly eventBus: TaskEventBus,
-    private readonly options: TaskAutomationEventAdapterOptions,
-  ) {}
+  private readonly eventBus: TaskEventBus
+  private readonly options: TaskAutomationEventAdapterOptions
+
+  constructor(eventBus: TaskEventBus, options: TaskAutomationEventAdapterOptions) {
+    this.eventBus = eventBus
+    this.options = options
+  }
+
   start(): void {
     if (this.unsubscribe) return
     this.unsubscribe = this.eventBus.subscribe((event) => this.handle(event))
