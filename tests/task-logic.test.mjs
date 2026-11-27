@@ -87,3 +87,40 @@ test("recurrence respects count and until limits", () => {
   })
   assert.equal(buildNextTaskOccurrence(dateLimited, "2026-01-10T12:00:00.000Z"), null)
 })
+
+test("weekly recurrence supports multiple selected weekdays", () => {
+  const monday = task("series", {
+    scheduledDate: "2026-01-05",
+    recurrenceRule: { frequency: "weekly", interval: 1, weekdays: [1, 3, 5] },
+  })
+  const wednesday = buildNextTaskOccurrence(monday, "2026-01-05T12:00:00.000Z")
+  assert.equal(wednesday?.occurrenceDate, "2026-01-07")
+  assert.equal(wednesday?.scheduledDate, "2026-01-07")
+
+  const friday = buildNextTaskOccurrence({ ...wednesday, id: "wednesday" }, "2026-01-07T12:00:00.000Z")
+  assert.equal(friday?.occurrenceDate, "2026-01-09")
+
+  const nextMonday = buildNextTaskOccurrence({ ...friday, id: "friday" }, "2026-01-09T12:00:00.000Z")
+  assert.equal(nextMonday?.occurrenceDate, "2026-01-12")
+})
+
+test("weekly recurrence applies the interval to calendar weeks", () => {
+  const first = task("series", {
+    occurrenceDate: "2026-01-05",
+    recurrenceRule: { frequency: "weekly", interval: 2, weekdays: [1, 3] },
+  })
+  const wednesday = buildNextTaskOccurrence(first, "2026-01-05T12:00:00.000Z")
+  assert.equal(wednesday?.occurrenceDate, "2026-01-07")
+
+  const nextCycle = buildNextTaskOccurrence({ ...wednesday, id: "wednesday" }, "2026-01-07T12:00:00.000Z")
+  assert.equal(nextCycle?.occurrenceDate, "2026-01-19")
+})
+
+test("weekly recurrence ignores invalid weekday values and falls back safely", () => {
+  const first = task("series", {
+    occurrenceDate: "2026-01-05",
+    recurrenceRule: { frequency: "weekly", interval: 1, weekdays: [8, -1] },
+  })
+  const next = buildNextTaskOccurrence(first, "2026-01-05T12:00:00.000Z")
+  assert.equal(next?.occurrenceDate, "2026-01-12")
+})
