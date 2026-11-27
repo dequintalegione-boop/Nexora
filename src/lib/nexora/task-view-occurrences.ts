@@ -59,6 +59,11 @@ export function expandTasksForView(
       .map((task) => task.id),
   )
   const ordinaryTasks = tasks.filter((task) => !rootIds.has(task.id) && !childIds.has(task.id))
+  const savedInstances = tasks.filter((task) =>
+    Boolean(task.recurrenceParentId && rootIds.has(task.recurrenceParentId)) &&
+    !task.archived &&
+    !task.deletedAt
+  )
   const occurrences: TaskOccurrenceView[] = expandTaskOccurrences(tasks, range.start, range.end)
   const occurrenceTasks: TaskViewItem[] = occurrences.map(({ task, isVirtual, seriesId }) => ({
     ...task,
@@ -67,6 +72,13 @@ export function expandTasksForView(
   }))
   const returnedIds = new Set(occurrenceTasks.map((task) => task.id))
   const seriesMasters: TaskViewItem[] = roots.filter((root) => !returnedIds.has(root.id))
+  const savedOutsideWindow: TaskViewItem[] = savedInstances
+    .filter((task) => !returnedIds.has(task.id))
+    .map((task) => ({
+      ...task,
+      virtualOccurrence: false,
+      recurrenceSeriesId: task.recurrenceParentId!,
+    }))
 
-  return [...ordinaryTasks, ...seriesMasters, ...occurrenceTasks]
+  return [...ordinaryTasks, ...seriesMasters, ...savedOutsideWindow, ...occurrenceTasks]
 }
