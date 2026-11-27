@@ -68,7 +68,21 @@ export function parseQuickTaskInput(input: string, today: string): QuickTaskDraf
     return prefix
   })
 
-  // Relative dates support practical phrases such as "через 3 дня" and "до завтра".
+    remaining = remaining.replace(/(^|\\s)до\\s+через\\s+(\\d{1,3})\\s+(день|дня|дней)(?=\\s|$)/giu, (match, prefix: string, amountText: string) => {
+    const amount = Number(amountText)
+    if (amount < 1 || amount > 365) return match
+    dueDate = addCalendarDays(today, amount)
+    return prefix
+  })
+
+  remaining = remaining.replace(/(^|\\s)до\\s+через\\s+(\\d{1,2})\\s+(неделя|недели|недель)(?=\\s|$)/giu, (match, prefix: string, amountText: string) => {
+    const amount = Number(amountText)
+    if (amount < 1 || amount > 52) return match
+    dueDate = addCalendarDays(today, amount * 7)
+    return prefix
+  })
+
+// Relative dates support practical phrases such as "через 3 дня" and "до завтра".
   // Limit numeric offsets so accidental prose is not silently interpreted as a date.
   remaining = remaining.replace(/(^|\s)до\s+(сегодня|завтра|послезавтра)(?=\s|$)/giu, (_match, prefix: string, token: string) => {
     const normalized = token.toLocaleLowerCase("ru-RU")
