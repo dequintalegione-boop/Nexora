@@ -243,7 +243,7 @@ export const useNexora = create<Store>()(
 
           const statusEvent = { type: "task.status_changed" as const, taskId: id, eventId: nid("event"), occurredAt: now }
           const statusResult = runTaskAutomations(nextTasks, s.automationRules ?? [], statusEvent)
-          const completionResult = status === "done" && current.status !== "done"
+          const completionResult = statusResult.tasks.find((task) => task.id === id)?.status === "done" && current.status !== "done"
             ? runTaskAutomations(statusResult.tasks, s.automationRules ?? [], { type: "task.completed", taskId: id, eventId: nid("event"), occurredAt: now })
             : { tasks: statusResult.tasks, runs: [] }
           return { tasks: completionResult.tasks, automationRuns: [...completionResult.runs, ...statusResult.runs, ...(s.automationRuns ?? [])].slice(0, 200) }
