@@ -17,6 +17,7 @@ export interface TaskOccurrenceViewRange {
 }
 
 export const TASK_VIEW_RECURRENCE_WINDOW_DAYS = 30
+export const TASK_VIEW_OVERDUE_WINDOW_DAYS = 365
 
 /** Keep list-like views bounded; quick filters narrow the occurrence window further. */
 export function getTaskOccurrenceViewRange(
@@ -32,7 +33,7 @@ export function getTaskOccurrenceViewRange(
     return { start: today, end: addDays(today, 7) }
   }
   if (quickFilter === "overdue") {
-    return { start: addDays(today, -days), end: addDays(today, -1) }
+    return { start: addDays(today, -TASK_VIEW_OVERDUE_WINDOW_DAYS), end: addDays(today, -1) }
   }
   return { start: addDays(today, -days), end: addDays(today, days) }
 }
