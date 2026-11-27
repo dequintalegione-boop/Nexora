@@ -39,25 +39,30 @@ function formatCondition(
   }
 }
 
+function isConditionGroup(
+  node: AutomationConditionNode,
+): node is Extract<AutomationConditionNode, { operator: "and" | "or" }> {
+  return node.operator === "and" || node.operator === "or"
+}
+
+function formatConditionNode(
+  node: AutomationConditionNode,
+  projects: { id: string; title: string }[],
+  settings?: Settings,
+): string {
+  if (!isConditionGroup(node)) return formatCondition(node, projects, settings)
+  if (node.conditions.length === 0) return "без условий"
+  const separator = node.operator === "or" ? " ИЛИ " : " И "
+  return node.conditions.map((child) => formatConditionNode(child, projects, settings)).join(separator)
+}
+
 function formatConditionsSummary(
   conditions: AutomationConditionNode[] | AutomationConditionLeaf[],
   projects: { id: string; title: string }[],
   settings?: Settings,
 ): string {
   if (!conditions || conditions.length === 0) return "без условий"
-
-  if (conditions.length === 1 && "operator" in conditions[0]) {
-    const group = conditions[0] as { operator: "and" | "or"; conditions: AutomationConditionNode[] }
-    const parts = group.conditions
-      .filter((c): c is AutomationConditionLeaf => !("operator" in c))
-      .map((c) => formatCondition(c, projects, settings))
-    if (parts.length === 0) return "без условий"
-    return parts.join(group.operator === "or" ? " ИЛИ " : " И ")
-  }
-
-  const leaves = conditions.filter((c): c is AutomationConditionLeaf => !("operator" in c))
-  if (leaves.length === 0) return "без условий"
-  return leaves.map((c) => formatCondition(c, projects, settings)).join(" И ")
+  return conditions.map((node) => formatConditionNode(node, projects, settings)).join(" И ")
 }
 
 function formatAction(

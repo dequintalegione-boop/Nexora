@@ -12,7 +12,6 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
 
 export function ProjectsPage() {
   const projects = useNexora((s) => s.projects)
-  const directions = useNexora((s) => s.directions)
   const addProject = useNexora((s) => s.addProject)
   const updateProject = useNexora((s) => s.updateProject)
 
