@@ -143,6 +143,12 @@ export function CalendarPage() {
   const [showWeekends, setShowWeekends] = useState(true)
   const [dayCount, setDayCount] = useState(3)
   const [agendaDayCount, setAgendaDayCount] = useState(7)
+  const [agendaStartDate, setAgendaStartDate] = useState(today)
+  const [agendaHasScrolled, setAgendaHasScrolled] = useState(false)
+  const agendaScrollRef = useRef<HTMLDivElement | null>(null)
+  const agendaTopSentinelRef = useRef<HTMLDivElement | null>(null)
+  const agendaBottomSentinelRef = useRef<HTMLDivElement | null>(null)
+  const agendaPrependHeightRef = useRef<number | null>(null)
   const [miniCalendarOpen, setMiniCalendarOpen] = useState(false)
   const [slotStartHour, setSlotStartHour] = useState(6)
   const [slotEndHour, setSlotEndHour] = useState(22)
@@ -185,6 +191,50 @@ export function CalendarPage() {
     })
     return () => window.cancelAnimationFrame(frame)
   }, [miniCalendarOpen, selected])
+
+  useEffect(() => {
+    if (view !== "agenda" || agendaDayCount >= 365) return
+    if (!("IntersectionObserver" in window)) return
+    const root = agendaScrollRef.current
+    const bottomSentinel = agendaBottomSentinelRef.current
+    if (!root || !bottomSentinel) return
+
+    const nextObserver = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setAgendaDayCount((count) => Math.min(365, count + 7))
+      }
+    }, { root, rootMargin: "180px 0px 180px 0px" })
+    nextObserver.observe(bottomSentinel)
+
+    let previousObserver: IntersectionObserver | null = null
+    const topSentinel = agendaTopSentinelRef.current
+    if (agendaHasScrolled && topSentinel) {
+      previousObserver = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return
+        if (agendaPrependHeightRef.current !== null) return
+        agendaPrependHeightRef.current = root.scrollHeight
+        setAgendaStartDate((start) => addDays(start, -7))
+        setAgendaDayCount((count) => Math.min(365, count + 7))
+      }, { root, rootMargin: "140px 0px 0px 0px" })
+      previousObserver.observe(topSentinel)
+    }
+
+    return () => {
+      nextObserver.disconnect()
+      previousObserver?.disconnect()
+    }
+  }, [view, agendaHasScrolled, agendaDayCount, agendaStartDate])
+
+  useEffect(() => {
+    const previousHeight = agendaPrependHeightRef.current
+    if (previousHeight === null) return
+    const frame = window.requestAnimationFrame(() => {
+      const container = agendaScrollRef.current
+      if (container) container.scrollTop += container.scrollHeight - previousHeight
+      agendaPrependHeightRef.current = null
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [agendaStartDate, agendaDayCount])
 
   useEffect(() => {
     if (view !== "week" && view !== "days" && view !== "day") return
@@ -239,8 +289,8 @@ export function CalendarPage() {
   )
 
   const agendaDays = useMemo(
-    () => Array.from({ length: agendaDayCount }, (_, i) => addDays(selected, i)),
-    [agendaDayCount, selected],
+    () => Array.from({ length: agendaDayCount }, (_, i) => addDays(agendaStartDate, i)),
+    [agendaDayCount, agendaStartDate],
   )
 
   const cells = useMemo(
@@ -426,6 +476,21 @@ export function CalendarPage() {
   }, [view, cursor, weekDays, visibleWeekDays, customDays, selected, listDays, agendaDays])
 
   const shift = (direction: -1 | 1) => {
+    if (view === "agenda") {
+      const next = addDays(agendaStartDate, direction * agendaDayCount)
+      setSelected(next)
+      setAgendaStartDate(next)
+      setAgendaDayCount(7)
+      setAgendaHasScrolled(false)
+      agendaPrependHeightRef.current = null
+      setSelectedSlot(null)
+      const parsed = parseISODate(next)
+      setCursor({ year: parsed.getFullYear(), month: parsed.getMonth() })
+      window.requestAnimationFrame(() => {
+        if (agendaScrollRef.current) agendaScrollRef.current.scrollTop = 0
+      })
+      return
+    }
     if (view === "year") {
       const year = cursor.year + direction
       setCursor({ year, month: cursor.month })
@@ -441,25 +506,46 @@ export function CalendarPage() {
       setSelectedSlot(null)
       return
     }
-    const step = view === "list" ? LIST_DAYS : view === "agenda" ? agendaDayCount : view === "day" ? 1 : view === "days" ? dayCount : 7
+    const step = view === "list" ? LIST_DAYS : view === "day" ? 1 : view === "days" ? dayCount : 7
     const next = addDays(selected, direction * step)
     setSelected(next)
     setSelectedSlot(null)
     const parsed = parseISODate(next)
     setCursor({ year: parsed.getFullYear(), month: parsed.getMonth() })
   }
-
   const goToday = () => {
     setSelected(today)
+    setAgendaStartDate(today)
+    setAgendaDayCount(7)
+    setAgendaHasScrolled(false)
+    agendaPrependHeightRef.current = null
     setCursor({ year: now.getFullYear(), month: now.getMonth() })
     setSelectedSlot(null)
   }
 
   const setCalendarView = (nextView: CalendarView) => {
+    if (nextView === "agenda") {
+      setAgendaStartDate(selected)
+      setAgendaDayCount(7)
+      setAgendaHasScrolled(false)
+      agendaPrependHeightRef.current = null
+    }
     setView(nextView)
     setSelectedSlot(null)
     const date = parseISODate(selected)
     setCursor({ year: date.getFullYear(), month: date.getMonth() })
+  }
+
+  const loadPreviousAgendaDays = () => {
+    const container = agendaScrollRef.current
+    if (container && agendaPrependHeightRef.current === null) agendaPrependHeightRef.current = container.scrollHeight
+    setAgendaStartDate((start) => addDays(start, -7))
+    setAgendaDayCount((count) => Math.min(365, count + 7))
+    setAgendaHasScrolled(true)
+  }
+
+  const loadNextAgendaDays = () => {
+    setAgendaDayCount((count) => Math.min(365, count + 7))
   }
 
   const completeAgendaTask = (task: CalendarTask) => {
@@ -1096,6 +1182,10 @@ export function CalendarPage() {
   const setSelectedDate = (day: string) => {
     setMiniCalendarOpen(false)
     setSelected(day)
+    setAgendaStartDate(day)
+    setAgendaDayCount(7)
+    setAgendaHasScrolled(false)
+    agendaPrependHeightRef.current = null
     setSelectedSlot(null)
     setShowComposer(false)
     const date = parseISODate(day)
