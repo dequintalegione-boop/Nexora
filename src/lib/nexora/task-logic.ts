@@ -1,4 +1,4 @@
-import type { Task } from "./types"
+import type { RecurrenceRule, Task } from "./types"
 
 export interface DependencyState {
   blockedBy: Task[]
@@ -168,4 +168,43 @@ export function buildNextTaskOccurrence(task: Task, now: string): Omit<Task, "id
     dependsOn: [...(task.dependsOn ?? [])],
     history: [{ at: now, change: "Создано следующее повторение" }],
   }
+}
+
+export function updateRecurrenceSeriesTasks(
+  tasks: Task[],
+  taskId: string,
+  rule: RecurrenceRule | undefined,
+  now: string
+): { tasks: Task[]; updatedCount: number } {
+  const current = tasks.find((task) => task.id === taskId)
+  if (!current || current.deletedAt || current.archived) return { tasks, updatedCount: 0 }
+
+  const seriesId = current.recurrenceParentId ?? current.id
+  let updatedCount = 0
+  const nextTasks = tasks.map((task) => {
+    const belongsToSeries = task.id === seriesId || task.recurrenceParentId === seriesId
+    const isEditableOccurrence =
+      task.id === seriesId ||
+      (task.status !== "done" &&
+        task.status !== "cancelled" &&
+        !task.archived &&
+        !task.deletedAt)
+    if (!belongsToSeries || !isEditableOccurrence) return task
+
+    updatedCount += 1
+    return {
+      ...task,
+      recurrenceRule: rule
+        ? { ...rule, weekdays: rule.weekdays ? [...rule.weekdays] : undefined }
+        : undefined,
+      repeat: rule?.frequency === "daily" || rule?.frequency === "weekly" ? rule.frequency : undefined,
+      updatedAt: now,
+      history: [
+        ...(task.history ?? []),
+        { at: now, change: "Правило повторения обновлено для всей серии" },
+      ].slice(-100),
+    }
+  })
+
+  return { tasks: nextTasks, updatedCount }
 }
