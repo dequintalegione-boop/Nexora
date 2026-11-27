@@ -114,8 +114,8 @@ export function TasksPage() {
       })
   }, [tasks, taskViewItems, filter, priorityFilter, projectFilter, search, view, quickFilter, today, weekLimit, sortBy, advancedFilter])
 
-  const isRecurrenceInstance = (task: TaskViewItem) => Boolean(task.recurrenceParentId && task.occurrenceDate)
-  const isRecurrenceSeries = (task: TaskViewItem) => Boolean((task.recurrenceRule || task.repeat) && !task.recurrenceParentId)
+  const isRecurrenceInstance = (task: TaskViewItem) => Boolean(task.recurrenceParentId && task.recurrenceParentId !== task.id && task.occurrenceDate)
+  const isRecurrenceSeries = (task: TaskViewItem) => Boolean((task.recurrenceRule || task.repeat) && (!task.recurrenceParentId || task.recurrenceParentId === task.id))
 
   const openTask = (task: TaskViewItem) => {
     if (task.virtualOccurrence && task.recurrenceParentId && task.occurrenceDate) {
