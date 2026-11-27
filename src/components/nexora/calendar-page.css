@@ -297,7 +297,7 @@
 .nexora-calendar-slot {
   border-color: rgba(255, 255, 255, .065);
   cursor: crosshair;
-  touch-action: none;
+  touch-action: auto;
 }
 
 .nexora-calendar-slot-hour {
@@ -310,6 +310,11 @@
 
 .nexora-calendar-slot:hover {
   background: rgba(255, 255, 255, .025);
+}
+
+.nexora-calendar-drop-target {
+  background: rgba(56, 168, 239, .13) !important;
+  box-shadow: inset 0 0 0 1px rgba(90, 190, 255, .72);
 }
 
 .nexora-calendar-selection {
@@ -347,6 +352,7 @@
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
+  touch-action: none;
   transition: filter 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
 }
 
@@ -395,6 +401,12 @@
 .nexora-calendar-priority-critical {
   border-color: rgba(239, 31, 57, .96) !important;
   color: #ff354f !important;
+}
+
+.nexora-calendar-list-event {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .nexora-calendar-time-entry {
@@ -448,6 +460,11 @@
   .nexora-calendar-toolbar-actions {
     width: 100%;
     justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .nexora-calendar-toolbar-actions .nexora-calendar-control {
+    max-width: 100%;
   }
 
   .nexora-calendar-period-title {

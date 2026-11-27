@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type PointerEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Plus } from "lucide-react"
@@ -12,6 +12,7 @@ import {
 import {
   getCalendarCreatePatch,
   getCalendarDayDropPatch,
+  getCalendarDropMinutes,
   getCalendarDropPatch,
   getCalendarResizePatch,
   getCalendarTaskTime,
@@ -20,7 +21,7 @@ import {
   layoutCalendarEvents,
 } from "@/lib/nexora/calendar"
 import { expandTaskOccurrences } from "@/lib/nexora/recurrence"
-import { isDoneStatus, getTaskPriorityLabels } from "@/lib/nexora/copy"
+import { getTaskStatusDefinitions, isDoneStatus, getTaskPriorityLabels } from "@/lib/nexora/copy"
 import { useNexora } from "@/lib/nexora/store"
 import { useUI } from "@/lib/nexora/ui-store"
 import type { Task } from "@/lib/nexora/types"
@@ -54,6 +55,21 @@ type SlotSelectionDraft = {
   end: number
   slotStart: number
   slotEnd: number
+}
+
+type CalendarDropTarget = {
+  day: string
+  minutes: number | null
+  allDay: boolean
+}
+
+type TouchTaskDrag = {
+  taskId: string
+  pointerId: number
+  startX: number
+  startY: number
+  active: boolean
+  target: CalendarDropTarget | null
 }
 
 const HEADS = {
@@ -133,6 +149,11 @@ export function CalendarPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [filterProjectId, setFilterProjectId] = useState("")
   const [filterPriority, setFilterPriority] = useState("")
+  const [filterStatus, setFilterStatus] = useState("")
+  const [filterTag, setFilterTag] = useState("")
+  const [touchTaskDrag, setTouchTaskDrag] = useState<TouchTaskDrag | null>(null)
+  const touchTaskDragRef = useRef<TouchTaskDrag | null>(null)
+  const suppressTouchClickRef = useRef(false)
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000)
@@ -148,6 +169,7 @@ export function CalendarPage() {
   const updateTask = useNexora((s) => s.updateTask)
   const setTaskId = useUI((s) => s.setTaskId)
   const priorityLabels = getTaskPriorityLabels(settings)
+  const statusDefinitions = getTaskStatusDefinitions(settings).filter((status) => !status.hidden)
 
   const weekDays = useMemo(() => {
     const weekStart = startOfWeek(selected, weekStartsOn)
@@ -229,6 +251,12 @@ export function CalendarPage() {
     return [...ordinaryTasks, ...occurrences]
   }, [tasks, recurrenceRange])
 
+  const calendarTags = useMemo(
+    () => Array.from(new Set(visibleTasks.flatMap((task) => task.tags ?? []).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b, "ru")),
+    [visibleTasks],
+  )
+
   const normalizedSearch = searchQuery.trim().toLocaleLowerCase()
   const filteredCalendarTasks = useMemo(() => visibleTasks.filter((task) => {
     if (normalizedSearch) {
@@ -240,8 +268,10 @@ export function CalendarPage() {
     }
     if (filterProjectId && task.projectId !== filterProjectId && !task.projectIds?.includes(filterProjectId)) return false
     if (filterPriority && task.priority !== filterPriority) return false
+    if (filterStatus && task.status !== filterStatus) return false
+    if (filterTag && !task.tags?.includes(filterTag)) return false
     return true
-  }), [visibleTasks, normalizedSearch, filterProjectId, filterPriority])
+  }), [visibleTasks, normalizedSearch, filterProjectId, filterPriority, filterStatus, filterTag])
 
   const tasksForDay = (day: string) =>
     filteredCalendarTasks.filter((task) => {
@@ -336,13 +366,18 @@ export function CalendarPage() {
         key={task.id}
         type="button"
         draggable={!task.virtualOccurrence}
+        onPointerDown={(event) => beginTouchTaskDrag(event, task)}
+        onPointerMove={moveTouchTaskDrag}
+        onPointerUp={finishTouchTaskDrag}
+        onPointerCancel={cancelTouchTaskDrag}
+        onClick={(event) => {
+          if (handleTouchTaskClick(event)) return
+          event.stopPropagation()
+          onEventClick(task)
+        }}
         onDragStart={task.virtualOccurrence ? undefined : (event) => {
           event.dataTransfer.setData("text/task-id", task.id)
           event.dataTransfer.effectAllowed = "move"
-        }}
-        onClick={(event) => {
-          event.stopPropagation()
-          onEventClick(task)
         }}
         className={eventChipClass(task, isDue ? "due" : "scheduled")}
         title={`${task.title}${time ? ` · ${time}` : ""}${isDue ? " · срок" : ""}${task.virtualOccurrence ? " · повторение" : ""}`}
@@ -383,6 +418,108 @@ export function CalendarPage() {
     const task = tasks.find((item) => item.id === id)
     if (!task) return
     updateTask(id, getCalendarDropPatch(task, day, minutes))
+  }
+
+  const resolveCalendarDropTarget = (clientX: number, clientY: number): CalendarDropTarget | null => {
+    const element = window.document.elementFromPoint(clientX, clientY)
+    const zone = element?.closest<HTMLElement>("[data-calendar-drop-day]")
+    const day = zone?.dataset.calendarDropDay
+    if (!day) return null
+    if (zone?.dataset.calendarDropAllDay === "true") return { day, minutes: null, allDay: true }
+    const explicitMinutes = zone?.dataset.calendarDropMinutes
+    if (explicitMinutes !== undefined) return { day, minutes: Number(explicitMinutes), allDay: false }
+    if (zone?.dataset.calendarDropGrid === "true") {
+      const rect = zone.getBoundingClientRect()
+      const minutes = getCalendarDropMinutes(
+        clientY,
+        rect.top,
+        rect.height,
+        Number(zone.dataset.calendarDropStart),
+        Number(zone.dataset.calendarDropEnd),
+        SLOT_STEP,
+      )
+      return { day, minutes, allDay: false }
+    }
+    return { day, minutes: null, allDay: false }
+  }
+
+  const applyCalendarTouchDrop = (taskId: string, target: CalendarDropTarget) => {
+    const task = tasks.find((item) => item.id === taskId)
+    if (!task) return
+    if (target.allDay) {
+      updateTask(taskId, {
+        scheduledDate: target.day,
+        startAt: undefined,
+        endAt: undefined,
+        allDay: true,
+      })
+      return
+    }
+    if (target.minutes !== null && Number.isFinite(target.minutes)) {
+      updateTask(taskId, getCalendarDropPatch(task, target.day, target.minutes))
+      return
+    }
+    updateTask(taskId, getCalendarDayDropPatch(task, target.day))
+  }
+
+  const beginTouchTaskDrag = (event: PointerEvent<HTMLButtonElement>, task: CalendarTask) => {
+    if (event.pointerType !== "touch" || !event.isPrimary || task.virtualOccurrence) return
+    suppressTouchClickRef.current = false
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const drag: TouchTaskDrag = {
+      taskId: task.id,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      active: false,
+      target: null,
+    }
+    touchTaskDragRef.current = drag
+    setTouchTaskDrag(drag)
+  }
+
+  const moveTouchTaskDrag = (event: PointerEvent<HTMLButtonElement>) => {
+    const current = touchTaskDragRef.current
+    if (!current || current.pointerId !== event.pointerId) return
+    const distance = Math.hypot(event.clientX - current.startX, event.clientY - current.startY)
+    const active = current.active || distance >= 9
+    if (!active) return
+    event.preventDefault()
+    const target = resolveCalendarDropTarget(event.clientX, event.clientY)
+    const next = { ...current, active, target }
+    touchTaskDragRef.current = next
+    setTouchTaskDrag(next)
+  }
+
+  const finishTouchTaskDrag = (event: PointerEvent<HTMLButtonElement>) => {
+    const current = touchTaskDragRef.current
+    if (!current || current.pointerId !== event.pointerId) return
+    const target = current.active
+      ? resolveCalendarDropTarget(event.clientX, event.clientY) ?? current.target
+      : null
+    if (current.active) {
+      suppressTouchClickRef.current = true
+      if (target) applyCalendarTouchDrop(current.taskId, target)
+    }
+    touchTaskDragRef.current = null
+    setTouchTaskDrag(null)
+  }
+
+  const cancelTouchTaskDrag = (event: PointerEvent<HTMLButtonElement>) => {
+    const current = touchTaskDragRef.current
+    if (!current || current.pointerId !== event.pointerId) return
+    if (current.active) suppressTouchClickRef.current = true
+    touchTaskDragRef.current = null
+    setTouchTaskDrag(null)
+  }
+
+  const handleTouchTaskClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (!suppressTouchClickRef.current) return false
+    suppressTouchClickRef.current = false
+    event.preventDefault()
+    event.stopPropagation()
+    return true
   }
 
   const selectSlot = (day: string, minutes: number | null) => {
@@ -452,7 +589,7 @@ export function CalendarPage() {
     slotEnd: number,
   ) => {
     if (event.button !== 0 || !event.isPrimary) return
-    event.preventDefault()
+    if (event.pointerType !== "touch") event.preventDefault()
     event.currentTarget.setPointerCapture(event.pointerId)
     const selection: SlotSelectionDraft = {
       day,
@@ -519,9 +656,12 @@ export function CalendarPage() {
             return (
               <div
                 key={`allday-${day}`}
+                data-calendar-drop-day={day}
+                data-calendar-drop-all-day="true"
                 className={cn(
                   "nexora-calendar-all-day min-h-[4.5rem] space-y-1 border-r border-white/10 p-1.5",
                   day === today && "bg-sky-400/[0.055]",
+                  touchTaskDrag?.active && touchTaskDrag.target?.day === day && touchTaskDrag.target.allDay && "nexora-calendar-drop-target",
                 )}
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={handleAllDayDrop(day)}
@@ -577,6 +717,10 @@ export function CalendarPage() {
             return (
               <div
                 key={`grid-${day}`}
+                data-calendar-drop-day={day}
+                data-calendar-drop-grid="true"
+                data-calendar-drop-start={slotStart}
+                data-calendar-drop-end={slotEnd}
                 className={cn(
                   "nexora-calendar-grid-column relative border-r border-white/10",
                   day === today && "nexora-calendar-today-column",
@@ -586,10 +730,13 @@ export function CalendarPage() {
                 {timeSlots.map((minutes) => (
                   <div
                     key={minutes}
+                    data-calendar-drop-day={day}
+                    data-calendar-drop-minutes={minutes}
                     className={cn(
                       "absolute inset-x-0 border-t transition-colors nexora-calendar-slot",
                       minutes % 60 === 0 ? "nexora-calendar-slot-hour" : "nexora-calendar-slot-half",
                       "hover:bg-white/[0.025]",
+                      touchTaskDrag?.active && touchTaskDrag.target?.day === day && touchTaskDrag.target.minutes === minutes && "nexora-calendar-drop-target",
                     )}
                     style={{
                       top: ((minutes - slotStart) / SLOT_STEP) * ROW_HEIGHT,
@@ -643,11 +790,16 @@ export function CalendarPage() {
                       key={task.id}
                       type="button"
                       draggable={!task.virtualOccurrence}
+                      onPointerDown={(event) => beginTouchTaskDrag(event, task)}
+                      onPointerMove={moveTouchTaskDrag}
+                      onPointerUp={finishTouchTaskDrag}
+                      onPointerCancel={cancelTouchTaskDrag}
                       onDragStart={task.virtualOccurrence ? undefined : (event) => {
                         event.dataTransfer.setData("text/task-id", task.id)
                         event.dataTransfer.effectAllowed = "move"
                       }}
                       onClick={(event) => {
+                        if (handleTouchTaskClick(event)) return
                         event.stopPropagation()
                         onEventClick(task)
                       }}
@@ -813,6 +965,30 @@ export function CalendarPage() {
             <option value="">Все проекты</option>
             {projects.filter((project) => !project.archived).map((project) => (
               <option key={project.id} value={project.id}>{project.title}</option>
+            ))}
+          </select>
+          <select
+            className="nexora-calendar-control"
+            value={filterStatus}
+            onChange={(event) => setFilterStatus(event.target.value)}
+            aria-label="Фильтр по статусу"
+            title="Статус"
+          >
+            <option value="">Все статусы</option>
+            {statusDefinitions.map((status) => (
+              <option key={status.id} value={status.id}>{status.label}</option>
+            ))}
+          </select>
+          <select
+            className="nexora-calendar-control"
+            value={filterTag}
+            onChange={(event) => setFilterTag(event.target.value)}
+            aria-label="Фильтр по метке"
+            title="Метка"
+          >
+            <option value="">Все метки</option>
+            {calendarTags.map((tag) => (
+              <option key={tag} value={tag}>{tag}</option>
             ))}
           </select>
           <select
@@ -1014,11 +1190,13 @@ export function CalendarPage() {
                 return (
                   <div
                     key={day}
+                    data-calendar-drop-day={day}
                     className={cn(
                       "min-h-[7.5rem] border-b border-r border-white/[0.07] p-1.5 transition hover:bg-white/[0.025]",
                       !inMonth && "opacity-35",
                       isToday && "bg-sky-400/[0.06]",
                       isSelected && "ring-1 ring-inset ring-sky-300/55",
+                      touchTaskDrag?.active && touchTaskDrag.target?.day === day && "nexora-calendar-drop-target",
                     )}
                     onDragOver={(event) => event.preventDefault()}
                     onDrop={handleDayDrop(day)}
@@ -1122,7 +1300,13 @@ export function CalendarPage() {
             {listDays.map((day) => {
               const dayList = tasksForDay(day)
               return (
-                <div key={day} className="px-4 py-4">
+                <div
+                  key={day}
+                  data-calendar-drop-day={day}
+                  className={cn("px-4 py-4", touchTaskDrag?.active && touchTaskDrag.target?.day === day && "nexora-calendar-drop-target")}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={handleDayDrop(day)}
+                >
                   <button
                     type="button"
                     className={cn(
@@ -1149,12 +1333,19 @@ export function CalendarPage() {
                             key={task.id}
                             type="button"
                             className={cn(
-                              "flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition hover:bg-white/[0.04]",
+                              "nexora-calendar-list-event flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition hover:bg-white/[0.04]",
                               PRIORITY_COLOR[task.priority] ?? "border-white/10",
                               isDoneStatus(task.status, settings) && "opacity-55 line-through",
                               (isDue || task.virtualOccurrence) && "border-dashed",
                             )}
-                            onClick={() => onEventClick(task)}
+                            onPointerDown={(event) => beginTouchTaskDrag(event, task)}
+                            onPointerMove={moveTouchTaskDrag}
+                            onPointerUp={finishTouchTaskDrag}
+                            onPointerCancel={cancelTouchTaskDrag}
+                            onClick={(event) => {
+                              if (handleTouchTaskClick(event)) return
+                              onEventClick(task)
+                            }}
                             draggable={!task.virtualOccurrence}
                             onDragStart={task.virtualOccurrence ? undefined : (event) => {
                               event.dataTransfer.setData("text/task-id", task.id)
