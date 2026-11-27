@@ -150,3 +150,9 @@ test("combined NLP tokens leave clean title", () => {
   assert.equal(draft.projectTitle, "CRM")
   assert.equal(draft.status, "planned")
 })
+
+test("status marker accepts raw id for custom statuses", () => {
+  const draft = parseQuickTaskInput("Проверить *custom_review", "2026-11-27")
+  assert.equal(draft.title, "Проверить")
+  assert.equal(draft.status, "custom_review")
+})
