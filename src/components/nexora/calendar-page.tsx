@@ -1333,7 +1333,7 @@ export function CalendarPage() {
         {view === "day" ? (
           <div ref={calendarScrollRef} className="nexora-calendar-scroll">
             <div style={{ width: "max(100%, 13rem)" }}>
-              <div className="border-b border-white/10 bg-black/25 px-4 py-3 text-sm font-medium capitalize text-white/70">
+              <div className="nexora-calendar-day-title border-b border-white/10 bg-black/25 px-4 py-3 text-sm font-medium capitalize text-white/70">
                 {format(parseISODate(selected), "EEEE, d MMMM", { locale: ru })}
               </div>
               {renderTimeGrid([selected])}
