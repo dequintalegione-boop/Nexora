@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState, type DragEvent, type FormEvent, type PointerEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type PointerEvent } from "react"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
-import { ChevronLeft, ChevronRight, Clock3 } from "lucide-react"
+import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Plus } from "lucide-react"
 import {
   addDays,
   isoDate,
@@ -15,6 +15,8 @@ import {
   getCalendarDropPatch,
   getCalendarResizePatch,
   getCalendarTaskTime,
+  getCalendarSelectionRange,
+  getCalendarSessionRange,
   layoutCalendarEvents,
 } from "@/lib/nexora/calendar"
 import { expandTaskOccurrences } from "@/lib/nexora/recurrence"
@@ -23,7 +25,7 @@ import { useNexora } from "@/lib/nexora/store"
 import { useUI } from "@/lib/nexora/ui-store"
 import type { Task } from "@/lib/nexora/types"
 import { cn } from "@/lib/cn"
-import { Card, PageHeader } from "./ui"
+import { Card } from "./ui"
 import "./calendar-page.css"
 
 /** Calendar views supported by the internal Nexora task calendar. */
@@ -43,6 +45,17 @@ type ResizeDraft = {
   previewEnd: number
 }
 
+type SlotSelectionDraft = {
+  day: string
+  pointerId: number
+  startY: number
+  anchorMinutes: number
+  start: number
+  end: number
+  slotStart: number
+  slotEnd: number
+}
+
 const HEADS = {
   1: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
   0: ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"],
@@ -52,11 +65,11 @@ const SLOT_STEP = 30
 const ROW_HEIGHT = 44
 const LIST_DAYS = 14
 const PRIORITY_COLOR: Record<string, string> = {
-  none: "bg-slate-500/20 border-slate-300/35 text-slate-100",
-  low: "bg-sky-500/25 border-sky-300/55 text-sky-100",
-  medium: "bg-amber-500/25 border-amber-300/55 text-amber-50",
-  high: "bg-orange-500/30 border-orange-300/60 text-orange-50",
-  critical: "bg-rose-500/30 border-rose-300/60 text-rose-50",
+  none: "nexora-calendar-priority-none",
+  low: "nexora-calendar-priority-low",
+  medium: "nexora-calendar-priority-medium",
+  high: "nexora-calendar-priority-high",
+  critical: "nexora-calendar-priority-critical",
 }
 
 function localTimeLabel(minutes: number) {
@@ -112,6 +125,14 @@ export function CalendarPage() {
   const [slotStartHour, setSlotStartHour] = useState(6)
   const [slotEndHour, setSlotEndHour] = useState(22)
   const [resizeDraft, setResizeDraft] = useState<ResizeDraft | null>(null)
+  const [slotSelection, setSlotSelection] = useState<SlotSelectionDraft | null>(null)
+  const slotSelectionRef = useRef<SlotSelectionDraft | null>(null)
+  const [selectedDuration, setSelectedDuration] = useState(60)
+  const [showComposer, setShowComposer] = useState(false)
+  const [showTimeEntries, setShowTimeEntries] = useState(true)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [filterProjectId, setFilterProjectId] = useState("")
+  const [filterPriority, setFilterPriority] = useState("")
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000)
@@ -121,6 +142,8 @@ export function CalendarPage() {
   const weekStartsOn = useNexora((s) => s.settings.weekStartsOn)
   const settings = useNexora((s) => s.settings)
   const tasks = useNexora((s) => s.tasks)
+  const projects = useNexora((s) => s.projects)
+  const sessions = useNexora((s) => s.sessions)
   const addTask = useNexora((s) => s.addTask)
   const updateTask = useNexora((s) => s.updateTask)
   const setTaskId = useUI((s) => s.setTaskId)
@@ -206,8 +229,22 @@ export function CalendarPage() {
     return [...ordinaryTasks, ...occurrences]
   }, [tasks, recurrenceRange])
 
+  const normalizedSearch = searchQuery.trim().toLocaleLowerCase()
+  const filteredCalendarTasks = useMemo(() => visibleTasks.filter((task) => {
+    if (normalizedSearch) {
+      const searchable = [task.title, task.description, ...(task.tags ?? []), ...(task.contexts ?? [])]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase()
+      if (!searchable.includes(normalizedSearch)) return false
+    }
+    if (filterProjectId && task.projectId !== filterProjectId && !task.projectIds?.includes(filterProjectId)) return false
+    if (filterPriority && task.priority !== filterPriority) return false
+    return true
+  }), [visibleTasks, normalizedSearch, filterProjectId, filterPriority])
+
   const tasksForDay = (day: string) =>
-    visibleTasks.filter((task) => {
+    filteredCalendarTasks.filter((task) => {
       if (!isTaskOnDay(task, day)) return false
       const isDueOnly =
         task.dueDate === day && task.scheduledDate !== day && task.startAt?.slice(0, 10) !== day
@@ -220,14 +257,14 @@ export function CalendarPage() {
 
   const dayCounts = useMemo(() => {
     const counts = new Map<string, number>()
-    for (const task of visibleTasks) {
+    for (const task of filteredCalendarTasks) {
       if (task.scheduledDate) counts.set(task.scheduledDate, (counts.get(task.scheduledDate) ?? 0) + 1)
       if (task.dueDate && task.dueDate !== task.scheduledDate) {
         counts.set(task.dueDate, (counts.get(task.dueDate) ?? 0) + 1)
       }
     }
     return counts
-  }, [visibleTasks])
+  }, [filteredCalendarTasks])
 
   const title = useMemo(() => {
     if (view === "year") return String(cursor.year)
@@ -284,7 +321,7 @@ export function CalendarPage() {
 
   const eventChipClass = (task: CalendarTask, kind: "scheduled" | "due") =>
     cn(
-      "block w-full truncate rounded-md border px-1.5 py-1 text-left text-[11px] leading-tight transition hover:brightness-110 focus-visible:z-20",
+      "nexora-calendar-event-chip block w-full truncate rounded-md border px-1.5 py-1 text-left text-[11px] leading-tight transition hover:brightness-110 focus-visible:z-20",
       PRIORITY_COLOR[task.priority] ?? PRIORITY_COLOR.none,
       isDoneStatus(task.status, settings) && "opacity-55 line-through",
       (kind === "due" || task.virtualOccurrence) && "border-dashed",
@@ -351,7 +388,11 @@ export function CalendarPage() {
   const selectSlot = (day: string, minutes: number | null) => {
     setSelected(day)
     setSelectedSlot(minutes)
+    setSelectedDuration(60)
     setDraft("")
+    setShowComposer(true)
+    const date = parseISODate(day)
+    setCursor({ year: date.getFullYear(), month: date.getMonth() })
   }
 
   const handleResizeStart = (
@@ -403,6 +444,59 @@ export function CalendarPage() {
     setResizeDraft(null)
   }
 
+  const beginTimeSelection = (
+    event: PointerEvent<HTMLDivElement>,
+    day: string,
+    minutes: number,
+    slotStart: number,
+    slotEnd: number,
+  ) => {
+    if (event.button !== 0 || !event.isPrimary) return
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const selection: SlotSelectionDraft = {
+      day,
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      anchorMinutes: minutes,
+      start: minutes,
+      end: minutes + SLOT_STEP,
+      slotStart,
+      slotEnd,
+    }
+    slotSelectionRef.current = selection
+    setSlotSelection(selection)
+  }
+
+  const updateTimeSelection = (event: PointerEvent<HTMLDivElement>) => {
+    const current = slotSelectionRef.current
+    if (!current || current.pointerId !== event.pointerId) return
+    const deltaSteps = Math.round((event.clientY - current.startY) / ROW_HEIGHT)
+    const range = getCalendarSelectionRange(current.anchorMinutes, deltaSteps, SLOT_STEP, current.slotStart, current.slotEnd)
+    const next = { ...current, start: range.start, end: range.end }
+    slotSelectionRef.current = next
+    setSlotSelection(next)
+  }
+
+  const finishTimeSelection = (event: PointerEvent<HTMLDivElement>) => {
+    const current = slotSelectionRef.current
+    if (!current || current.pointerId !== event.pointerId) return
+    const deltaSteps = Math.round((event.clientY - current.startY) / ROW_HEIGHT)
+    const range = getCalendarSelectionRange(current.anchorMinutes, deltaSteps, SLOT_STEP, current.slotStart, current.slotEnd)
+    slotSelectionRef.current = null
+    setSlotSelection(null)
+    setSelectedDate(current.day)
+    setSelectedSlot(range.start)
+    setSelectedDuration(deltaSteps === 0 ? 60 : range.end - range.start)
+    setShowComposer(true)
+    setDraft("")
+  }
+
+  const cancelTimeSelection = () => {
+    slotSelectionRef.current = null
+    setSlotSelection(null)
+  }
+
   const renderTimeGrid = (days: string[]) => {
     const slotStart = slotStartHour * 60
     const slotEnd = slotEndHour * 60
@@ -443,14 +537,14 @@ export function CalendarPage() {
         </div>
 
         <div
-          className="grid"
+          className="nexora-calendar-time-grid grid"
           style={{ gridTemplateColumns: `3.5rem repeat(${days.length}, minmax(9.5rem, 1fr))` }}
         >
           <div className="relative border-r border-white/10" style={{ height: gridHeight }}>
             {timeSlots.map((minutes) => minutes % 60 === 0 ? (
               <div
                 key={minutes}
-                className="absolute right-2 -translate-y-1/2 text-[10px] tabular-nums text-white/45"
+                className="nexora-calendar-time-label absolute right-2 -translate-y-1/2 text-[10px] tabular-nums text-white/45"
                 style={{ top: ((minutes - slotStart) / SLOT_STEP) * ROW_HEIGHT }}
               >
                 {localTimeLabel(minutes)}
@@ -467,19 +561,25 @@ export function CalendarPage() {
               const end = Math.min(slotEnd, range.end)
               return end > start ? [{ task, start, end, rawStart: range.start, rawEnd: range.end }] : []
             })
-            const layout = layoutCalendarEvents(timed.map(({ task, start, end }) => ({
-              id: task.id,
-              start,
-              end,
-            })))
+            const timeEntries = showTimeEntries ? sessions.flatMap((session) => {
+              const range = getCalendarSessionRange(session, day)
+              if (!range) return []
+              const start = Math.max(slotStart, range.start)
+              const end = Math.min(slotEnd, range.end)
+              return end > start ? [{ session, start, end, rawStart: range.start, rawEnd: range.end }] : []
+            }) : []
+            const layout = layoutCalendarEvents([
+              ...timed.map(({ task, start, end }) => ({ id: `task:${task.id}`, start, end })),
+              ...timeEntries.map(({ session, start, end }) => ({ id: `session:${session.id}`, start, end })),
+            ])
             const layoutById = new Map(layout.map((item) => [item.id, item] as const))
             const showNow = day === today && nowMinutes >= slotStart && nowMinutes <= slotEnd
             return (
               <div
                 key={`grid-${day}`}
                 className={cn(
-                  "relative border-r border-white/10",
-                  day === today && "bg-sky-400/[0.045]",
+                  "nexora-calendar-grid-column relative border-r border-white/10",
+                  day === today && "nexora-calendar-today-column",
                 )}
                 style={{ height: gridHeight }}
               >
@@ -487,8 +587,8 @@ export function CalendarPage() {
                   <div
                     key={minutes}
                     className={cn(
-                      "absolute inset-x-0 border-t transition-colors",
-                      minutes % 60 === 0 ? "border-white/[0.13]" : "border-white/[0.055]",
+                      "absolute inset-x-0 border-t transition-colors nexora-calendar-slot",
+                      minutes % 60 === 0 ? "nexora-calendar-slot-hour" : "nexora-calendar-slot-half",
                       "hover:bg-white/[0.025]",
                     )}
                     style={{
@@ -498,7 +598,11 @@ export function CalendarPage() {
                     role="button"
                     tabIndex={0}
                     aria-label={`Создать задачу ${localTimeLabel(minutes)}`}
-                    onClick={() => selectSlot(day, minutes)}
+                    onPointerDown={(event) => beginTimeSelection(event, day, minutes, slotStart, slotEnd)}
+                    onPointerMove={updateTimeSelection}
+                    onPointerUp={finishTimeSelection}
+                    onPointerCancel={cancelTimeSelection}
+                    onLostPointerCapture={cancelTimeSelection}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault()
@@ -511,8 +615,20 @@ export function CalendarPage() {
                   />
                 ))}
 
+                {slotSelection?.day === day ? (
+                  <div
+                    className="nexora-calendar-selection absolute inset-x-1 z-[1] rounded-md"
+                    style={{
+                      top: ((slotSelection.start - slotStart) / SLOT_STEP) * ROW_HEIGHT,
+                      height: Math.max(ROW_HEIGHT / 2, ((slotSelection.end - slotSelection.start) / SLOT_STEP) * ROW_HEIGHT),
+                    }}
+                  >
+                    <span>{formatRange(slotSelection.start, slotSelection.end)}</span>
+                  </div>
+                ) : null}
+
                 {timed.map(({ task, rawStart, rawEnd }) => {
-                  const layoutItem = layoutById.get(task.id)
+                  const layoutItem = layoutById.get(`task:${task.id}`)
                   if (!layoutItem) return null
                   const previewStart = resizeDraft?.taskId === task.id ? resizeDraft.previewStart : rawStart
                   const previewEnd = resizeDraft?.taskId === task.id ? resizeDraft.previewEnd : rawEnd
@@ -536,7 +652,7 @@ export function CalendarPage() {
                         onEventClick(task)
                       }}
                       className={cn(
-                        "nexora-calendar-event absolute z-[2] overflow-hidden rounded-md border px-2 py-1.5 text-left shadow-sm transition-[filter,opacity] hover:brightness-110 focus-visible:z-20",
+                        "nexora-calendar-event absolute z-[2] overflow-hidden rounded-md border px-2 py-1.5 text-left transition-[filter,opacity] hover:brightness-110 focus-visible:z-20",
                         colorClass,
                         isDoneStatus(task.status, settings) && "opacity-55",
                         (task.virtualOccurrence || isDueOnly) && "border-dashed",
@@ -597,6 +713,41 @@ export function CalendarPage() {
                   )
                 })}
 
+                {timeEntries.map(({ session, rawStart, rawEnd }) => {
+                  const layoutItem = layoutById.get(`session:${session.id}`)
+                  if (!layoutItem) return null
+                  const visibleStart = Math.max(slotStart, rawStart)
+                  const visibleEnd = Math.min(slotEnd, rawEnd)
+                  const top = ((visibleStart - slotStart) / SLOT_STEP) * ROW_HEIGHT
+                  const height = Math.max(25, ((visibleEnd - visibleStart) / SLOT_STEP) * ROW_HEIGHT)
+                  const linkedTask = session.taskId ? tasks.find((task) => task.id === session.taskId) : undefined
+                  return (
+                    <button
+                      key={`time-${session.id}`}
+                      type="button"
+                      disabled={!session.taskId}
+                      onClick={() => session.taskId && setTaskId(session.taskId)}
+                      className="nexora-calendar-time-entry absolute z-[2] overflow-hidden rounded-md border px-2 py-1.5 text-left"
+                      style={{
+                        top,
+                        height,
+                        left: `calc(${layoutItem.leftPercent}% + 2px)`,
+                        width: `calc(${layoutItem.widthPercent}% - 4px)`,
+                        zIndex: 2 + layoutItem.column,
+                      }}
+                      title={`${session.title ?? linkedTask?.title ?? "Фактическое время"} · ${formatRange(visibleStart, visibleEnd)}`}
+                    >
+                      <span className="block text-[10px] font-semibold tabular-nums leading-tight">
+                        {formatRange(visibleStart, visibleEnd)}
+                      </span>
+                      <span className="mt-0.5 block overflow-hidden text-ellipsis text-[11px] font-semibold leading-tight">
+                        {session.title ?? linkedTask?.title ?? "Фактическое время"}
+                      </span>
+                      <span className="absolute right-2 top-1.5 text-[9px] uppercase tracking-wide opacity-60">факт</span>
+                    </button>
+                  )
+                })}
+
                 {showNow ? (
                   <div
                     className="pointer-events-none absolute inset-x-0 z-[4] flex items-center"
@@ -621,7 +772,7 @@ export function CalendarPage() {
     if (!value) return
     const schedulePatch = selectedSlot === null
       ? { scheduledDate: selected }
-      : getCalendarCreatePatch(selected, selectedSlot)
+      : getCalendarCreatePatch(selected, selectedSlot, selectedDuration)
     const id = addTask({
       title: value,
       status: "planned",
@@ -630,104 +781,139 @@ export function CalendarPage() {
     })
     setDraft("")
     setSelectedSlot(null)
+    setShowComposer(false)
     setTaskId(id)
   }
 
   const setSelectedDate = (day: string) => {
     setSelected(day)
     setSelectedSlot(null)
+    setShowComposer(false)
     const date = parseISODate(day)
     setCursor({ year: date.getFullYear(), month: date.getMonth() })
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1800px] space-y-4 pb-6">
-      <PageHeader kicker="Календарь" title="Планирование" text="Временная сетка, задачи и дедлайны в одном календаре.">
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-black/20 p-0.5">
-            <button type="button" className="icon-btn" aria-label="Предыдущий период" onClick={() => shift(-1)}>
-              <ChevronLeft size={17} />
-            </button>
-            <button type="button" className="btn btn-ghost px-2 text-xs" onClick={goToday}>
-              Сегодня
-            </button>
-            <button type="button" className="icon-btn" aria-label="Следующий период" onClick={() => shift(1)}>
-              <ChevronRight size={17} />
-            </button>
-          </div>
+    <div className="nexora-calendar-page mx-auto w-full max-w-none space-y-3 pb-6">
+      <div className="nexora-calendar-toolbar">
+        <div className="nexora-calendar-toolbar-title">
+          <CalendarDays size={16} />
+          <span>Календарь</span>
+          <span className="nexora-calendar-count">{filteredCalendarTasks.length} задач</span>
+        </div>
 
-          <p className="min-w-[13rem] text-center text-sm font-medium capitalize tabular-nums">{title}</p>
-
-          <div className="flex flex-wrap items-center gap-0.5 rounded-lg border border-white/10 bg-black/20 p-0.5">
-            {([
-              ["year", "Г"],
-              ["month", "М"],
-              ["week", "Н"],
-              ["days", `${dayCount}д`],
-              ["day", "Д"],
-              ["list", "С"],
-            ] as const).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                className={cn(
-                  "min-w-8 rounded-md px-2 py-1.5 text-[11px] font-medium transition",
-                  view === id ? "bg-sky-400/15 text-sky-300 shadow-[0_0_0_1px_rgba(56,189,248,0.2)_inset]" : "text-white/55 hover:bg-white/5 hover:text-white/90",
-                )}
-                onClick={() => setCalendarView(id)}
-                aria-pressed={view === id}
-                title={{ year: "Год", month: "Месяц", week: "Неделя", days: "Несколько дней", day: "День", list: "Список" }[id]}
-              >
-                {label}
-              </button>
+        <div className="nexora-calendar-toolbar-actions">
+          <select
+            className="nexora-calendar-control"
+            value={filterProjectId}
+            onChange={(event) => setFilterProjectId(event.target.value)}
+            aria-label="Фильтр по проекту"
+            title="Проект"
+          >
+            <option value="">Все проекты</option>
+            {projects.filter((project) => !project.archived).map((project) => (
+              <option key={project.id} value={project.id}>{project.title}</option>
             ))}
-          </div>
+          </select>
+          <select
+            className="nexora-calendar-control"
+            value={filterPriority}
+            onChange={(event) => setFilterPriority(event.target.value)}
+            aria-label="Фильтр по приоритету"
+            title="Приоритет"
+          >
+            <option value="">Все приоритеты</option>
+            {Object.entries(priorityLabels).map(([id, label]) => (
+              <option key={id} value={id}>{label}</option>
+            ))}
+          </select>
+          <input
+            type="search"
+            className="nexora-calendar-search"
+            placeholder="Поиск"
+            aria-label="Поиск задач"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+          <button
+            type="button"
+            className="nexora-calendar-new"
+            onClick={() => {
+              setDraft("")
+              setSelectedSlot(null)
+              setSelectedDuration(60)
+              setShowComposer(true)
+            }}
+          >
+            <Plus size={14} />
+            Новый
+          </button>
         </div>
-      </PageHeader>
+      </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-white/55">
-          <label className="flex cursor-pointer items-center gap-2">
-            <input
-              type="checkbox"
-              checked={showScheduled}
-              onChange={(event) => setShowScheduled(event.target.checked)}
-              className="accent-sky-400"
-            />
-            Запланировано
-          </label>
-          <label className="flex cursor-pointer items-center gap-2">
-            <input
-              type="checkbox"
-              checked={showDue}
-              onChange={(event) => setShowDue(event.target.checked)}
-              className="accent-rose-400"
-            />
-            Дедлайны
-          </label>
-          {(view === "week" || view === "days") ? (
-            <label className="flex cursor-pointer items-center gap-2">
-              <input
-                type="checkbox"
-                checked={showWeekends}
-                onChange={(event) => setShowWeekends(event.target.checked)}
-                className="accent-sky-400"
-              />
-              Выходные
-            </label>
-          ) : null}
+      <div className="nexora-calendar-period-bar">
+        <div className="nexora-calendar-navigation">
+          <button type="button" className="nexora-calendar-icon-button" aria-label="Предыдущий период" onClick={() => shift(-1)}>
+            <ChevronLeft size={16} />
+          </button>
+          <button type="button" className="nexora-calendar-today" onClick={goToday}>Сегодня</button>
+          <button type="button" className="nexora-calendar-icon-button" aria-label="Следующий период" onClick={() => shift(1)}>
+            <ChevronRight size={16} />
+          </button>
         </div>
+
+        <p className="nexora-calendar-period-title">{title}</p>
+
+        <div className="nexora-calendar-view-switch" role="group" aria-label="Вид календаря">
+          {([
+            ["year", "Г"],
+            ["month", "М"],
+            ["week", "Н"],
+            ["days", `${dayCount}д`],
+            ["day", "Д"],
+            ["list", "С"],
+          ] as const).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className="nexora-calendar-view-button"
+              onClick={() => setCalendarView(id)}
+              aria-pressed={view === id}
+              title={{ year: "Год", month: "Месяц", week: "Неделя", days: "Несколько дней", day: "День", list: "Список" }[id]}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="nexora-calendar-filterbar">
+        <label className="nexora-calendar-toggle">
+          <input type="checkbox" checked={showScheduled} onChange={(event) => setShowScheduled(event.target.checked)} />
+          Запланировано
+        </label>
+        <label className="nexora-calendar-toggle">
+          <input type="checkbox" checked={showDue} onChange={(event) => setShowDue(event.target.checked)} />
+          Дедлайны
+        </label>
+        <label className="nexora-calendar-toggle">
+          <input type="checkbox" checked={showTimeEntries} onChange={(event) => setShowTimeEntries(event.target.checked)} />
+          Фактическое время
+        </label>
+        {(view === "week" || view === "days") ? (
+          <label className="nexora-calendar-toggle">
+            <input type="checkbox" checked={showWeekends} onChange={(event) => setShowWeekends(event.target.checked)} />
+            Выходные
+          </label>
+        ) : null}
+
+        <div className="nexora-calendar-filter-spacer" />
 
         {(view === "days" || view === "week" || view === "day") ? (
-          <div className="flex flex-wrap items-center gap-2 text-xs text-white/50">
+          <div className="nexora-calendar-range-controls">
             {view === "days" ? (
-              <label className="flex items-center gap-2">
-                Дней
-                <select
-                  value={dayCount}
-                  onChange={(event) => setDayCount(Number(event.target.value))}
-                  className="rounded-md border border-white/10 bg-[#151a1e] px-2 py-1.5 text-white/80"
-                >
+              <label>Дней
+                <select className="nexora-calendar-control" value={dayCount} onChange={(event) => setDayCount(Number(event.target.value))}>
                   {Array.from({ length: 9 }, (_, i) => i + 2).map((count) => (
                     <option key={count} value={count}>{count}</option>
                   ))}
@@ -735,22 +921,21 @@ export function CalendarPage() {
               </label>
             ) : null}
             {view !== "day" ? (
-              <label className="flex items-center gap-2">
-                С
+              <label>Время
                 <select
+                  className="nexora-calendar-control"
                   value={slotStartHour}
                   onChange={(event) => setSlotStartHour(Math.min(Number(event.target.value), slotEndHour - 1))}
-                  className="rounded-md border border-white/10 bg-[#151a1e] px-2 py-1.5 text-white/80"
                 >
                   {Array.from({ length: 24 }, (_, hour) => hour).filter((hour) => hour < slotEndHour).map((hour) => (
                     <option key={hour} value={hour}>{localTimeLabel(hour * 60)}</option>
                   ))}
                 </select>
-                До
+                <span>—</span>
                 <select
+                  className="nexora-calendar-control"
                   value={slotEndHour}
                   onChange={(event) => setSlotEndHour(Math.max(Number(event.target.value), slotStartHour + 1))}
-                  className="rounded-md border border-white/10 bg-[#151a1e] px-2 py-1.5 text-white/80"
                 >
                   {Array.from({ length: 24 }, (_, hour) => hour + 1).filter((hour) => hour > slotStartHour).map((hour) => (
                     <option key={hour} value={hour}>{localTimeLabel(hour * 60)}</option>
@@ -875,7 +1060,7 @@ export function CalendarPage() {
                   type="button"
                   className={cn(
                     "border-l border-white/10 py-3 transition hover:bg-white/[0.04]",
-                    day === today && "bg-sky-400/[0.07] text-sky-300",
+                    day === today && "nexora-calendar-today-header bg-sky-400/[0.07] text-sky-300",
                     day === selected && "font-semibold",
                   )}
                   onClick={() => setSelectedDate(day)}
@@ -906,7 +1091,7 @@ export function CalendarPage() {
                   type="button"
                   className={cn(
                     "border-l border-white/10 py-3 transition hover:bg-white/[0.04]",
-                    day === today && "bg-sky-400/[0.07] text-sky-300",
+                    day === today && "nexora-calendar-today-header bg-sky-400/[0.07] text-sky-300",
                     day === selected && "font-semibold",
                   )}
                   onClick={() => setSelectedDate(day)}
@@ -995,35 +1180,38 @@ export function CalendarPage() {
         ) : null}
       </Card>
 
-      <Card className="nexora-calendar-composer">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="font-semibold capitalize">
-              {format(parseISODate(selected), "EEEE, d MMMM", { locale: ru })}
-            </h2>
-            <p className="mt-1 text-xs text-white/45">
-              {selected === today ? "Сегодня" : "Выбранная дата"}
-              {selectedSlot === null ? " · задача на весь день" : ` · ${localTimeLabel(selectedSlot)}–${localTimeLabel(Math.min(selectedSlot + 60, 24 * 60))}`}
-            </p>
-          </div>
-          {selectedSlot !== null ? (
-            <button type="button" className="text-xs text-sky-300 hover:text-sky-200" onClick={() => setSelectedSlot(null)}>
-              Убрать время
+      {showComposer ? (
+        <Card className="nexora-calendar-composer">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold capitalize">
+                {format(parseISODate(selected), "EEEE, d MMMM", { locale: ru })}
+              </h2>
+              <p className="mt-1 text-xs text-white/55">
+                {selected === today ? "Сегодня" : "Выбранная дата"}
+                {selectedSlot === null
+                  ? " · задача на весь день"
+                  : ` · ${localTimeLabel(selectedSlot)}–${localTimeLabel(Math.min(selectedSlot + selectedDuration, 24 * 60))}`}
+              </p>
+            </div>
+            <button type="button" className="nexora-calendar-cancel" onClick={() => setShowComposer(false)}>
+              Отмена
             </button>
-          ) : null}
-        </div>
-        <form className="mt-3 flex flex-wrap gap-2" onSubmit={handleCreateTask}>
-          <input
-            className="field min-w-[14rem] flex-1"
-            placeholder={selectedSlot === null ? "Быстро добавить задачу на этот день" : `Новая задача · ${localTimeLabel(selectedSlot)}`}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-          />
-          <button className="btn btn-primary" type="submit" disabled={!draft.trim()}>
-            Добавить задачу
-          </button>
-        </form>
-      </Card>
+          </div>
+          <form className="mt-3 flex flex-wrap gap-2" onSubmit={handleCreateTask}>
+            <input
+              className="field min-w-[14rem] flex-1"
+              placeholder={selectedSlot === null ? "Быстро добавить задачу на этот день" : `Новая задача · ${localTimeLabel(selectedSlot)}`}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+            />
+            <button className="nexora-calendar-new" type="submit" disabled={!draft.trim()}>
+              <Plus size={14} />
+              Добавить задачу
+            </button>
+          </form>
+        </Card>
+      ) : null}
     </div>
   )
 }

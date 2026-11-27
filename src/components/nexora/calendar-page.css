@@ -1,43 +1,418 @@
+:root {
+  --nexora-calendar-bg: #202020;
+  --nexora-calendar-panel: #222426;
+  --nexora-calendar-line: rgba(255, 255, 255, .09);
+  --nexora-calendar-line-strong: rgba(255, 255, 255, .15);
+  --nexora-calendar-muted: rgba(226, 232, 240, .48);
+  --nexora-calendar-today: rgba(43, 74, 91, .2);
+  --nexora-calendar-accent: #38a8ef;
+}
+
+.nexora-calendar-page {
+  width: 100%;
+  max-width: none;
+  color: rgba(241, 245, 249, .88);
+}
+
+.nexora-calendar-toolbar,
+.nexora-calendar-period-bar,
+.nexora-calendar-filterbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  min-width: 0;
+}
+
+.nexora-calendar-toolbar {
+  min-height: 2.25rem;
+}
+
+.nexora-calendar-toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex: 0 0 auto;
+  color: rgba(241, 245, 249, .88);
+  font-size: .82rem;
+  font-weight: 600;
+}
+
+.nexora-calendar-toolbar-title svg {
+  color: rgba(203, 213, 225, .65);
+}
+
+.nexora-calendar-count {
+  color: var(--nexora-calendar-muted);
+  font-size: .7rem;
+  font-weight: 400;
+}
+
+.nexora-calendar-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: .35rem;
+  min-width: 0;
+}
+
+.nexora-calendar-control,
+.nexora-calendar-search {
+  min-height: 1.9rem;
+  border: 1px solid var(--nexora-calendar-line);
+  border-radius: 5px;
+  background: #242628;
+  color: rgba(226, 232, 240, .78);
+  padding: .25rem .55rem;
+  font-size: .7rem;
+  outline: none;
+}
+
+.nexora-calendar-control:focus,
+.nexora-calendar-search:focus {
+  border-color: rgba(56, 168, 239, .65);
+  box-shadow: 0 0 0 2px rgba(56, 168, 239, .1);
+}
+
+.nexora-calendar-search {
+  width: min(10rem, 24vw);
+}
+
+.nexora-calendar-search::placeholder {
+  color: rgba(226, 232, 240, .38);
+}
+
+.nexora-calendar-new {
+  display: inline-flex;
+  min-height: 1.9rem;
+  align-items: center;
+  justify-content: center;
+  gap: .35rem;
+  border: 1px solid rgba(56, 168, 239, .32);
+  border-radius: 5px;
+  background: rgba(56, 168, 239, .12);
+  color: #8bcfff;
+  padding: .25rem .65rem;
+  font-size: .7rem;
+  font-weight: 600;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.nexora-calendar-new:hover:not(:disabled) {
+  background: rgba(56, 168, 239, .2);
+  border-color: rgba(56, 168, 239, .55);
+}
+
+.nexora-calendar-new:disabled {
+  cursor: not-allowed;
+  opacity: .4;
+}
+
+.nexora-calendar-period-bar {
+  position: relative;
+  min-height: 2.2rem;
+  border-bottom: 1px solid var(--nexora-calendar-line);
+  padding: 0 0 .45rem;
+}
+
+.nexora-calendar-navigation,
+.nexora-calendar-view-switch {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: .2rem;
+}
+
+.nexora-calendar-icon-button,
+.nexora-calendar-today,
+.nexora-calendar-view-button {
+  display: inline-flex;
+  min-width: 1.8rem;
+  min-height: 1.8rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(226, 232, 240, .62);
+  padding: .2rem .45rem;
+  font-size: .68rem;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.nexora-calendar-icon-button:hover,
+.nexora-calendar-today:hover,
+.nexora-calendar-view-button:hover {
+  background: rgba(255, 255, 255, .055);
+  color: rgba(248, 250, 252, .92);
+}
+
+.nexora-calendar-period-title {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: 46%;
+  transform: translate(-50%, -50%);
+  overflow: hidden;
+  color: rgba(226, 232, 240, .78);
+  font-size: .78rem;
+  font-weight: 500;
+  text-align: center;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.nexora-calendar-view-switch {
+  padding: 2px;
+  border: 1px solid var(--nexora-calendar-line);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, .14);
+}
+
+.nexora-calendar-view-button[aria-pressed="true"] {
+  border-color: rgba(56, 168, 239, .2);
+  background: rgba(56, 168, 239, .15);
+  color: #91d0ff;
+}
+
+.nexora-calendar-filterbar {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  min-height: 1.9rem;
+  color: var(--nexora-calendar-muted);
+  font-size: .68rem;
+}
+
+.nexora-calendar-toggle,
+.nexora-calendar-range-controls,
+.nexora-calendar-range-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+}
+
+.nexora-calendar-toggle {
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.nexora-calendar-toggle input {
+  width: .8rem;
+  height: .8rem;
+  accent-color: var(--nexora-calendar-accent);
+}
+
+.nexora-calendar-filter-spacer {
+  flex: 1 1 auto;
+}
+
+.nexora-calendar-range-controls {
+  gap: .45rem;
+}
+
+.nexora-calendar-range-controls .nexora-calendar-control {
+  min-width: 3.4rem;
+}
+
 .nexora-calendar-card {
-  background: linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.008)), #101416;
-  border-color: rgba(255,255,255,.09);
+  overflow: hidden;
+  border: 1px solid var(--nexora-calendar-line);
+  border-radius: 7px;
+  background: var(--nexora-calendar-bg);
+  color: rgba(241, 245, 249, .88);
+  box-shadow: none;
 }
 
 .nexora-calendar-scroll {
   overflow-x: auto;
   overscroll-behavior-x: contain;
-  scrollbar-color: rgba(255,255,255,.16) transparent;
+  scrollbar-color: rgba(255, 255, 255, .17) transparent;
+  scrollbar-width: thin;
+}
+
+.nexora-calendar-day-header {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  background: #202020;
+}
+
+.nexora-calendar-day-header button {
+  min-height: 2rem;
+  border-left: 1px solid var(--nexora-calendar-line);
+  color: rgba(148, 163, 184, .82);
+  font-size: .7rem;
+}
+
+.nexora-calendar-day-header button span:first-child {
+  color: rgba(148, 163, 184, .7);
+}
+
+.nexora-calendar-day-header button span:last-child {
+  color: #76bce8;
+  font-size: .7rem;
+}
+
+.nexora-calendar-day-header .nexora-calendar-today-header {
+  position: relative;
+  background: var(--nexora-calendar-today);
+  color: #c1e6ff;
+  box-shadow: inset 1px 0 var(--nexora-calendar-accent), inset -1px 0 var(--nexora-calendar-accent);
 }
 
 .nexora-calendar-all-day-label,
 .nexora-calendar-all-day {
-  background: rgba(255,255,255,.018);
+  background: #202020;
+  border-color: var(--nexora-calendar-line);
 }
 
-.nexora-calendar-event {
+.nexora-calendar-all-day-label {
+  display: flex;
+  align-items: center;
+  min-height: 3.25rem;
+  color: rgba(203, 213, 225, .7);
+  font-size: .66rem;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.nexora-calendar-all-day {
+  min-height: 3.25rem;
+  padding: .3rem;
+  border-bottom: 1px solid var(--nexora-calendar-line-strong);
+}
+
+.nexora-calendar-grid-column {
+  background: #202020;
+}
+
+.nexora-calendar-today-column {
+  background: #232a2d;
+  box-shadow: inset 1px 0 var(--nexora-calendar-accent), inset -1px 0 var(--nexora-calendar-accent);
+}
+
+.nexora-calendar-slot {
+  border-color: rgba(255, 255, 255, .065);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.nexora-calendar-slot-hour {
+  border-color: rgba(255, 255, 255, .15);
+}
+
+.nexora-calendar-slot-half {
+  border-color: rgba(255, 255, 255, .065);
+}
+
+.nexora-calendar-slot:hover {
+  background: rgba(255, 255, 255, .025);
+}
+
+.nexora-calendar-selection {
+  display: flex;
+  align-items: flex-start;
+  border: 1px solid rgba(76, 171, 239, .78);
+  background: rgba(44, 131, 190, .18);
+  box-shadow: inset 0 0 0 1px rgba(76, 171, 239, .08);
+  pointer-events: none;
+}
+
+.nexora-calendar-selection span {
+  padding: .2rem .35rem;
+  color: #a8dafa;
+  font-size: .63rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.nexora-calendar-time-label {
+  color: rgba(148, 163, 184, .66);
+  font-size: .64rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.nexora-calendar-event,
+.nexora-calendar-event-chip {
   min-width: 0;
   min-height: 25px;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 5px;
+  background: rgba(34, 34, 34, .96);
+  box-shadow: none;
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
-  transition:
-    filter 140ms ease,
-    box-shadow 140ms ease,
-    opacity 140ms ease;
+  transition: filter 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
 }
 
-.nexora-calendar-event:active {
+.nexora-calendar-event {
+  border-radius: 5px;
+  padding: .35rem .45rem;
+}
+
+.nexora-calendar-event-chip {
+  padding: .22rem .35rem;
+  font-size: .65rem;
+  line-height: 1.25;
+}
+
+.nexora-calendar-event:active,
+.nexora-calendar-event-chip:active {
   cursor: grabbing;
 }
 
-.nexora-calendar-event:focus-visible {
-  outline: 2px solid rgba(125,211,252,.9);
+.nexora-calendar-event:focus-visible,
+.nexora-calendar-event-chip:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, .9);
   outline-offset: 1px;
+}
+
+.nexora-calendar-priority-none {
+  border-color: rgba(173, 181, 189, .58) !important;
+  color: #c3c6c9 !important;
+}
+
+.nexora-calendar-priority-low {
+  border-color: rgba(59, 130, 246, .78) !important;
+  color: #7ab8ff !important;
+}
+
+.nexora-calendar-priority-medium {
+  border-color: rgba(226, 156, 38, .82) !important;
+  color: #f0ad3d !important;
+}
+
+.nexora-calendar-priority-high {
+  border-color: rgba(244, 133, 28, .9) !important;
+  color: #ff9b2f !important;
+}
+
+.nexora-calendar-priority-critical {
+  border-color: rgba(239, 31, 57, .96) !important;
+  color: #ff354f !important;
+}
+
+.nexora-calendar-time-entry {
+  border-color: rgba(45, 212, 191, .58);
+  background: rgba(12, 72, 67, .32);
+  color: #83ddd0;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.nexora-calendar-time-entry:disabled {
+  cursor: default;
+  opacity: .82;
 }
 
 .nexora-calendar-resize-handle {
   touch-action: none;
-  opacity: .24;
+  opacity: .22;
   transition: opacity 140ms ease, background 140ms ease;
 }
 
@@ -47,19 +422,66 @@
 }
 
 .nexora-calendar-resize-handle:hover {
-  background: rgba(255,255,255,.12);
-}
-
-.nexora-calendar-all-day .nexora-calendar-event {
-  min-height: 25px;
+  background: rgba(255, 255, 255, .12);
 }
 
 .nexora-calendar-composer {
-  border-color: rgba(255,255,255,.09);
-  background: linear-gradient(135deg, rgba(255,255,255,.035), rgba(255,255,255,.012));
+  border-color: rgba(255, 255, 255, .12);
+  background: #222426;
 }
 
-@media (max-width: 720px) {
+.nexora-calendar-cancel {
+  color: rgba(203, 213, 225, .66);
+  font-size: .7rem;
+}
+
+.nexora-calendar-cancel:hover {
+  color: rgba(248, 250, 252, .95);
+}
+
+@media (max-width: 900px) {
+  .nexora-calendar-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .nexora-calendar-toolbar-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .nexora-calendar-period-title {
+    max-width: 35%;
+    font-size: .68rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .nexora-calendar-period-bar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    min-height: auto;
+    padding-bottom: .55rem;
+  }
+
+  .nexora-calendar-period-title {
+    position: static;
+    order: 3;
+    width: 100%;
+    max-width: none;
+    transform: none;
+    text-align: left;
+  }
+
+  .nexora-calendar-view-switch {
+    margin-left: auto;
+  }
+
+  .nexora-calendar-search {
+    flex: 1 1 8rem;
+    width: auto;
+  }
+
   .nexora-calendar-card .nexora-calendar-scroll {
     -webkit-overflow-scrolling: touch;
   }
@@ -71,6 +493,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .nexora-calendar-event,
+  .nexora-calendar-event-chip,
   .nexora-calendar-resize-handle {
     transition: none;
   }

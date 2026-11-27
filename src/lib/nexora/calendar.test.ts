@@ -1,7 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { getCalendarCreatePatch, getCalendarDayDropPatch, getCalendarDropPatch, getCalendarResizePatch, getCalendarTaskTime, layoutCalendarEvents } from "./calendar.ts"
-import type { Task } from "./types.ts"
+import { getCalendarCreatePatch, getCalendarDayDropPatch, getCalendarDropPatch, getCalendarResizePatch, getCalendarSelectionRange, getCalendarSessionRange, getCalendarTaskTime, layoutCalendarEvents } from "./calendar.ts"
+import type { Task, TimeSession } from "./types.ts"
 
 const task: Task = {
   id: "task-1", title: "Задача", status: "planned", priority: "none",
@@ -91,4 +91,36 @@ test("calendar create and resize patches preserve a minimum 15-minute duration",
     endAt: "2026-11-28T08:15",
     allDay: false,
   })
+})
+
+
+test("drag selection includes every half-hour slot in either direction and respects grid bounds", () => {
+  assert.deepEqual(getCalendarSelectionRange(10 * 60, 2, 30, 6 * 60, 22 * 60), {
+    start: 10 * 60,
+    end: 11 * 60 + 30,
+  })
+  assert.deepEqual(getCalendarSelectionRange(10 * 60, -2, 30, 6 * 60, 22 * 60), {
+    start: 9 * 60,
+    end: 10 * 60 + 30,
+  })
+  assert.deepEqual(getCalendarSelectionRange(21 * 60 + 30, 9, 30, 6 * 60, 22 * 60), {
+    start: 21 * 60 + 30,
+    end: 22 * 60,
+  })
+})
+
+test("completed time sessions are clipped to their local calendar day", () => {
+  const session: TimeSession = {
+    id: "session-1",
+    createdAt: "2026-11-27T00:00:00",
+    updatedAt: "2026-11-27T00:00:00",
+    kind: "focus",
+    startedAt: "2026-11-27T23:30:00",
+    endedAt: "2026-11-28T01:00:00",
+    durationMinutes: 90,
+    title: "Ночная сессия",
+  }
+  assert.deepEqual(getCalendarSessionRange(session, "2026-11-27"), { start: 23 * 60 + 30, end: 24 * 60 })
+  assert.deepEqual(getCalendarSessionRange(session, "2026-11-28"), { start: 0, end: 60 })
+  assert.equal(getCalendarSessionRange(session, "2026-11-29"), null)
 })

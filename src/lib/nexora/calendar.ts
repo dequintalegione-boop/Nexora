@@ -1,4 +1,4 @@
-import type { Task } from "./types"
+import type { Task, TimeSession } from "./types"
 
 function localDateTime(day: string, minutes: number): string {
   const date = new Date(`${day}T00:00:00`)
@@ -152,5 +152,44 @@ export function getCalendarResizePatch(
     startAt: localDateTime(day, start),
     endAt: localDateTime(day, end),
     allDay: false,
+  }
+}
+
+
+/** Resolve a mouse-drag selection to an inclusive set of half-hour slots. */
+export function getCalendarSelectionRange(
+  anchorMinutes: number,
+  deltaSteps: number,
+  slotStep = 30,
+  minMinutes = 0,
+  maxMinutes = 24 * 60,
+): { start: number; end: number } {
+  const step = Math.max(1, Math.round(slotStep))
+  const min = Math.max(0, Math.min(24 * 60 - step, Math.ceil(minMinutes / step) * step))
+  const max = Math.max(min + step, Math.min(24 * 60, Math.floor(maxMinutes / step) * step))
+  const anchor = Math.max(min, Math.min(max - step, Math.round(anchorMinutes / step) * step))
+  const active = Math.max(min, Math.min(max - step, anchor + Math.round(deltaSteps) * step))
+  return { start: Math.min(anchor, active), end: Math.max(anchor, active) + step }
+}
+
+/** Clip a completed time-tracking session to one local calendar day. */
+export function getCalendarSessionRange(
+  session: Pick<TimeSession, "startedAt" | "endedAt">,
+  day: string,
+): { start: number; end: number } | null {
+  const start = new Date(session.startedAt)
+  const end = new Date(session.endedAt)
+  const dayStart = new Date(`${day}T00:00:00`)
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start || !Number.isFinite(dayStart.getTime())) {
+    return null
+  }
+  const dayEnd = new Date(dayStart)
+  dayEnd.setDate(dayEnd.getDate() + 1)
+  const clippedStart = Math.max(start.getTime(), dayStart.getTime())
+  const clippedEnd = Math.min(end.getTime(), dayEnd.getTime())
+  if (clippedEnd <= clippedStart) return null
+  return {
+    start: Math.max(0, Math.floor((clippedStart - dayStart.getTime()) / 60_000)),
+    end: Math.min(24 * 60, Math.ceil((clippedEnd - dayStart.getTime()) / 60_000)),
   }
 }
