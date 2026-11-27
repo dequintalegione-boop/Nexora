@@ -124,7 +124,12 @@ export function buildNextTaskOccurrence(task: Task, now: string): Omit<Task, "id
   if (rule.count != null && occurrenceNumber > rule.count) return null
 
   const baseDate = task.recurrenceStartDate ?? task.occurrenceDate ?? task.scheduledDate ?? task.dueDate ?? now.slice(0, 10)
-  const weeklyDays = rule.frequency === "weekly" && rule.weekdays?.length\n    ? rule.weekdays\n    : undefined\n  const nextDate = weeklyDays\n    ? getWeeklyOccurrenceDate(baseDate, rule.interval, weeklyDays, occurrenceNumber - 1)\n    : shiftOccurrenceDate(baseDate, rule.frequency, rule.interval * (occurrenceNumber - 1))
+  const weeklyDays = rule.frequency === "weekly" && rule.weekdays?.length
+    ? rule.weekdays
+    : undefined
+  const nextDate = weeklyDays
+    ? getWeeklyOccurrenceDate(baseDate, rule.interval, weeklyDays, occurrenceNumber - 1)
+    : shiftOccurrenceDate(baseDate, rule.frequency, rule.interval * (occurrenceNumber - 1))
   if (rule.until && nextDate > rule.until) return null
 
   const scheduledAnchor = task.recurrenceStartScheduledDate ?? task.scheduledDate
