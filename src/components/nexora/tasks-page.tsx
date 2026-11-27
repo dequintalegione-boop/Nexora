@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react"
 import { useNexora } from "@/lib/nexora/store"
-import { DEFAULT_TASK_TABLE_COLUMNS, TASK_TABLE_COLUMN_LABELS, useUI, type TaskTableColumn } from "@/lib/nexora/ui-store"
+import { DEFAULT_TASK_TABLE_COLUMNS, TASK_TABLE_COLUMN_LABELS, useUI, type TaskOccurrenceContext, type TaskTableColumn } from "@/lib/nexora/ui-store"
 import {
   getTaskStatusLabels,
   getTaskPriorityLabels,
@@ -9,6 +9,7 @@ import {
   getStatusSelectOptions,
 } from "@/lib/nexora/copy"
 import { addDays, isoDate } from "@/lib/nexora/dates"
+import { expandTasksForView, getTaskOccurrenceViewRange, type TaskViewItem } from "@/lib/nexora/task-view-occurrences"
 import type { TaskStatus, Priority } from "@/lib/nexora/types"
 import { Button, Card, Input, Select, Badge } from "./ui"
 import { QuickTaskInput, buildQuickTaskSuggestions } from "./quick-task-input"
@@ -36,6 +37,8 @@ export function TasksPage() {
   const removeTask = useNexora((s) => s.removeTask)
   const permanentlyDeleteTask = useNexora((s) => s.permanentlyDeleteTask)
   const setTaskId = useUI((s) => s.setTaskId)
+  const setTaskOccurrence = useUI((s) => s.setTaskOccurrence)
+  const materializeTaskOccurrence = useNexora((s) => s.materializeTaskOccurrence)
   const savedTaskViews = useUI((s) => s.savedTaskViews)
   const saveTaskView = useUI((s) => s.saveTaskView)
   const removeTaskView = useUI((s) => s.removeTaskView)
@@ -50,7 +53,8 @@ export function TasksPage() {
   const [view, setView] = useState<"active" | "archive" | "trash">("active")
   const [layout, setLayout] = useState<"list" | "table" | "kanban">("list")
   const [quickFilter, setQuickFilter] = useState<"all" | "today" | "inbox" | "overdue" | "week" | "unblocked">("all")
-  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null)
+  const [draggedTask, setDraggedTask] = useState<TaskViewItem | null>(null)
+  const [showRecurringInstances, setShowRecurringInstances] = useState(true)
   const [filter, setFilter] = useState<"all" | TaskStatus>("all")
   const [priorityFilter, setPriorityFilter] = useState<"all" | Priority>("all")
   const [projectFilter, setProjectFilter] = useState("all")
@@ -67,9 +71,19 @@ export function TasksPage() {
 
   const today = isoDate()
   const weekLimit = addDays(today, 7)
+  const recurrenceRange = useMemo(
+    () => getTaskOccurrenceViewRange(today, quickFilter),
+    [today, quickFilter],
+  )
+  const taskViewItems = useMemo<TaskViewItem[]>(
+    () => view === "active" && showRecurringInstances
+      ? expandTasksForView(tasks, recurrenceRange)
+      : tasks,
+    [tasks, view, showRecurringInstances, recurrenceRange],
+  )
 
   const filtered = useMemo(() => {
-    return tasks
+    return taskViewItems
       .filter((t) => {
         if (view === "active") return !t.archived && !t.deletedAt
         if (view === "archive") return Boolean(t.archived) && !t.deletedAt
@@ -80,11 +94,11 @@ export function TasksPage() {
       .filter((t) => projectFilter === "all" || t.projectId === projectFilter || (t.projectIds ?? []).includes(projectFilter))
       .filter((t) => !search || t.title.toLowerCase().includes(search.toLowerCase()))
       .filter((t) => {
-        if (quickFilter === "today") return t.scheduledDate === today || t.dueDate === today
+        if (quickFilter === "today") return t.scheduledDate === today || t.dueDate === today || t.startAt?.slice(0, 10) === today
         if (quickFilter === "inbox") return t.status === "inbox"
         if (quickFilter === "overdue") return Boolean(t.dueDate && t.dueDate < today && t.status !== "done")
         if (quickFilter === "week") {
-          const date = t.scheduledDate || t.dueDate
+          const date = t.scheduledDate || t.dueDate || t.startAt?.slice(0, 10)
           return Boolean(date && date >= today && date <= weekLimit)
         }
         if (quickFilter === "unblocked") return !getDependencyState(t, tasks).isBlocked
@@ -98,10 +112,28 @@ export function TasksPage() {
         if (sortBy === "title") return a.title.localeCompare(b.title, "ru")
         return (prio[a.priority] ?? 5) - (prio[b.priority] ?? 5)
       })
-  }, [tasks, filter, priorityFilter, projectFilter, search, view, quickFilter, today, weekLimit, sortBy, advancedFilter])
+  }, [tasks, taskViewItems, filter, priorityFilter, projectFilter, search, view, quickFilter, today, weekLimit, sortBy, advancedFilter])
+
+  const isRecurrenceInstance = (task: TaskViewItem) => Boolean(task.recurrenceParentId && task.recurrenceParentId !== task.id && task.occurrenceDate)
+  const isRecurrenceSeries = (task: TaskViewItem) => Boolean((task.recurrenceRule || task.repeat) && (!task.recurrenceParentId || task.recurrenceParentId === task.id))
+
+  const openTask = (task: TaskViewItem) => {
+    if (task.virtualOccurrence && task.recurrenceParentId && task.occurrenceDate) {
+      const occurrence: TaskOccurrenceContext = {
+        seriesId: task.recurrenceSeriesId ?? task.recurrenceParentId,
+        occurrenceDate: task.occurrenceDate,
+        task,
+      }
+      setTaskId(occurrence.seriesId)
+      setTaskOccurrence(occurrence)
+      return
+    }
+    setTaskOccurrence(null)
+    setTaskId(task.id)
+  }
 
   const kanbanColumns = getKanbanColumns(kanbanGroupBy, projects, statusLabels, priorityLabels)
-  const selectedCount = selectedTaskIds.filter((id) => filtered.some((task) => task.id === id)).length
+  const selectedCount = selectedTaskIds.filter((id) => filtered.some((task) => !task.virtualOccurrence && task.id === id)).length
   const toggleTaskSelection = (id: string) => {
     setSelectedTaskIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
   }
@@ -128,7 +160,7 @@ export function TasksPage() {
     saveTaskView({ name, filter, priorityFilter, projectFilter, sortBy, quickFilter, search, layout, columns: taskTableColumns, advancedFilter, kanbanGroupBy })
     setViewName("")
   }
-  const selectedTasks = filtered.filter((task) => selectedTaskIds.includes(task.id))
+  const selectedTasks = filtered.filter((task) => !task.virtualOccurrence && selectedTaskIds.includes(task.id))
   const bulkSetStatus = (status: TaskStatus) => { selectedTasks.forEach((task) => setTaskStatus(task.id, status)); clearSelection() }
   const bulkSetPriority = (priority: Priority) => { selectedTasks.forEach((task) => updateTask(task.id, { priority })); clearSelection() }
   const bulkArchive = () => { selectedTasks.forEach((task) => archiveTask(task.id)); clearSelection() }
@@ -155,6 +187,7 @@ export function TasksPage() {
     if (templateInput.projectId && !activeProjectIds.has(templateInput.projectId)) templateInput.projectId = templateInput.projectIds[0]
     if (!templateInput.projectId && templateInput.projectIds.length > 0) templateInput.projectId = templateInput.projectIds[0]
     const id = addTask(templateInput)
+    setTaskOccurrence(null)
     setTaskId(id)
     setTemplateId("")
   }
@@ -270,10 +303,16 @@ export function TasksPage() {
           </div>
         )}
         {view === "active" && (
-          <div className="flex flex-wrap gap-1">
-            {([["all", "Все"], ["today", "Сегодня"], ["inbox", "Входящие"], ["overdue", "Просрочено"], ["week", "На неделе"], ["unblocked", "Не заблокированы"]] as const).map(([key, label]) => (
-              <Button key={key} size="sm" variant={quickFilter === key ? "secondary" : "ghost"} onClick={() => setQuickFilter(key)}>{label}</Button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap gap-1">
+              {([["all", "Все"], ["today", "Сегодня"], ["inbox", "Входящие"], ["overdue", "Просрочено"], ["week", "На неделе"], ["unblocked", "Не заблокированы"]] as const).map(([key, label]) => (
+                <Button key={key} size="sm" variant={quickFilter === key ? "secondary" : "ghost"} onClick={() => setQuickFilter(key)}>{label}</Button>
+              ))}
+            </div>
+            <label className="flex items-center gap-2 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-muted" title={`Виртуальные повторения вычисляются для ${recurrenceRange.start} — ${recurrenceRange.end}`}>
+              <input type="checkbox" checked={showRecurringInstances} onChange={(event) => setShowRecurringInstances(event.target.checked)} />
+              Повторы
+            </label>
           </div>
         )}
         <Select value={filter} onChange={(e) => setFilter(e.target.value as any)}>
@@ -387,13 +426,24 @@ export function TasksPage() {
                 className="w-72 shrink-0 rounded-xl border border-white/10 bg-white/[0.02] p-3"
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => {
-                  if (!draggedTaskId) return
-                  const patch = getKanbanDropPatch(kanbanGroupBy, column.id)
-                  if (patch) {
-                    if (patch.status) setTaskStatus(draggedTaskId, patch.status as TaskStatus)
-                    else if (Object.keys(patch).length) updateTask(draggedTaskId, patch)
+                  if (!draggedTask) return
+                  if (getKanbanTaskColumnIds(draggedTask, kanbanGroupBy).includes(column.id)) {
+                    setDraggedTask(null)
+                    return
                   }
-                  setDraggedTaskId(null)
+                  const patch = getKanbanDropPatch(kanbanGroupBy, column.id)
+                  if (!patch) {
+                    setDraggedTask(null)
+                    return
+                  }
+                  const targetTaskId = draggedTask.virtualOccurrence
+                    ? materializeTaskOccurrence(draggedTask)
+                    : draggedTask.id
+                  if (targetTaskId) {
+                    if (patch.status) setTaskStatus(targetTaskId, patch.status as TaskStatus)
+                    else if (Object.keys(patch).length) updateTask(targetTaskId, patch)
+                  }
+                  setDraggedTask(null)
                 }}
               >
                 <div className="mb-2 flex items-center justify-between">
@@ -406,10 +456,13 @@ export function TasksPage() {
                       key={task.id}
                       className="cursor-pointer p-3"
                       draggable
-                      onDragStart={() => setDraggedTaskId(task.id)}
-                      onClick={() => setTaskId(task.id)}
+                      onDragStart={() => setDraggedTask(task)}
+                      onDragEnd={() => setDraggedTask(null)}
+                      onClick={() => openTask(task)}
                     >
                       <div className="font-medium">{task.title}</div>
+                      {isRecurrenceSeries(task) && <span className="mt-1 block text-[10px] text-sky-300">Серия повторений</span>}
+                      {isRecurrenceInstance(task) && <span className="mt-1 block text-[10px] text-teal-300">Повтор · {task.occurrenceDate}</span>}
                       <div className="mt-1 flex flex-wrap gap-1">
                         <Badge priority={task.priority}>{priorityLabels[task.priority]}</Badge>
                         {task.dueDate && <span className="text-xs text-muted">до {task.dueDate}</span>}
@@ -432,14 +485,22 @@ export function TasksPage() {
             </thead>
             <tbody>
               {filtered.map((task) => (
-                <tr key={task.id} className="border-t border-white/5 hover:bg-white/[0.02]" onClick={() => setTaskId(task.id)}>
+                <tr key={task.id} className="border-t border-white/5 hover:bg-white/[0.02]" onClick={() => openTask(task)}>
                   <td className="p-2" onClick={(e) => e.stopPropagation()}>
-                    <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} />
+                    {isRecurrenceInstance(task)
+                      ? <span className="text-xs text-teal-300" title={task.virtualOccurrence ? "Виртуальный экземпляр повторения" : "Сохранённый экземпляр повторения"}>↻</span>
+                      : <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} />}
                   </td>
                   {taskTableColumns.map((col) => {
                     const cell: Record<TaskTableColumn, ReactNode> = {
-                      title: task.title,
-                      status: (
+                      title: (
+                        <span className="inline-flex flex-wrap items-center gap-2">
+                          {task.title}
+                          {isRecurrenceSeries(task) && <span className="text-[10px] text-sky-300">Серия</span>}
+                          {isRecurrenceInstance(task) && <span className="text-[10px] text-teal-300">Повтор · {task.occurrenceDate}</span>}
+                        </span>
+                      ),
+                      status: task.virtualOccurrence ? (statusLabels[task.status] ?? task.status) : (
                         <Select className="w-36" value={task.status} onClick={(e) => e.stopPropagation()} onChange={(event) => setTaskStatus(task.id, event.target.value as TaskStatus)}>
                           {getStatusSelectOptions(settings, task.status).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
                         </Select>
@@ -466,15 +527,19 @@ export function TasksPage() {
       ) : (
         <div className="space-y-2">
           {filtered.map((task) => (
-            <Card key={task.id} className="flex cursor-pointer items-center gap-3 p-3" onClick={() => setTaskId(task.id)}>
-              {view === "active" && (
+            <Card key={task.id} className="flex cursor-pointer items-center gap-3 p-3" onClick={() => openTask(task)}>
+              {view === "active" && !task.virtualOccurrence && (
                 <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onClick={(e) => e.stopPropagation()} onChange={() => toggleTaskSelection(task.id)} />
               )}
-              <Select value={task.status} onClick={(e) => e.stopPropagation()} onChange={(e) => setTaskStatus(task.id, e.target.value as TaskStatus)} className="w-36">
+              {task.virtualOccurrence
+                ? <span className="w-36 shrink-0 text-xs text-muted">{statusLabels[task.status] ?? task.status}</span>
+                : <Select value={task.status} onClick={(e) => e.stopPropagation()} onChange={(e) => setTaskStatus(task.id, e.target.value as TaskStatus)} className="w-36">
                 {getStatusSelectOptions(settings, task.status).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-              </Select>
+              </Select>}
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">{task.title}</div>
+                {isRecurrenceSeries(task) && <div className="text-[10px] text-sky-300">Серия повторений</div>}
+                {isRecurrenceInstance(task) && <div className="text-[10px] text-teal-300">Повтор · {task.occurrenceDate}</div>}
                 {task.dueDate && <div className="text-xs text-muted">до {task.dueDate}</div>}
               </div>
               <div className="flex items-center gap-2">
@@ -482,9 +547,9 @@ export function TasksPage() {
                 {getTaskChildren(tasks, task.id).length > 0 && <span className="text-xs text-muted">↳ {getTaskChildren(tasks, task.id).length}</span>}
                 <Badge priority={task.priority}>{priorityLabels[task.priority]}</Badge>
               </div>
-              {view === "active" && <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); archiveTask(task.id) }}>Архив</Button>}
+              {view === "active" && !task.virtualOccurrence && <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); archiveTask(task.id) }}>Архив</Button>}
               {view !== "active" && <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); restoreTask(task.id) }}>Восстановить</Button>}
-              {view === "active" && <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); removeTask(task.id) }}>В корзину</Button>}
+              {view === "active" && !task.virtualOccurrence && <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); removeTask(task.id) }}>В корзину</Button>}
               {view === "trash" && <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); if (window.confirm("Удалить задачу навсегда? Это действие нельзя отменить.")) permanentlyDeleteTask(task.id) }}>Удалить навсегда</Button>}
             </Card>
           ))}
