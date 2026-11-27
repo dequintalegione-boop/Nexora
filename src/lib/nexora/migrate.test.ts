@@ -38,6 +38,9 @@ function minimalV0(): Partial<Persisted> {
       widgetOrder: [],
       hiddenWidgets: [],
       notificationsEnabled: false,
+      calendarSnapMinutes: 30,
+      calendarPixelsPerHour: 104,
+      calendarFitToWindow: true,
     },
   }
 }
@@ -58,6 +61,9 @@ test("migrates version 0 profile to current schema", () => {
   assert.ok(Array.isArray(result.data.automationRuns))
   assert.deepEqual(result.data.tasks[0].dependsOn, [])
   assert.ok(Array.isArray(result.data.tasks[0].history))
+  assert.equal(result.data.settings.calendarSnapMinutes, 30)
+  assert.equal(result.data.settings.calendarPixelsPerHour, 104)
+  assert.equal(result.data.settings.calendarFitToWindow, true)
 })
 
 test("idempotent: already-current data is not re-migrated", () => {

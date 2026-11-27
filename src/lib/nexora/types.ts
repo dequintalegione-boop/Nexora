@@ -291,6 +291,12 @@ export interface Settings {
   taskPriorities?: PriorityDefinition[]
   notificationsEnabled?: boolean
   pomodoro?: PomodoroSettings
+  /** Calendar planner snap interval in minutes. */
+  calendarSnapMinutes?: 15 | 30 | 60
+  /** Calendar planner zoom in pixels per hour. */
+  calendarPixelsPerHour?: number
+  /** Whether the calendar planner fits its visible time range to the viewport. */
+  calendarFitToWindow?: boolean
   initialized: boolean
   theme: ThemeMode
   accent: string
