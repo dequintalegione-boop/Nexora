@@ -77,7 +77,7 @@ function applyAction(task: Task, action: AutomationAction, now: string): Task {
       return { ...task, tags: (task.tags ?? []).filter((tag) => tag !== action.value) }
     case "set_due_offset": {
       const due = new Date(now)
-      due.setDate(due.getDate() + action.days)
+      due.setUTCDate(due.getUTCDate() + action.days)
       return { ...task, dueDate: due.toISOString().slice(0, 10) }
     }
   }
