@@ -85,11 +85,11 @@ function matchesCondition(task: Task, condition: TaskFilterCondition, tasks: Tas
     case "notContains": return Array.isArray(actual) ? !list.some((item) => item.toLocaleLowerCase("ru").includes(needle)) : !normalized.includes(needle)
     case "isEmpty": return isEmpty(actual)
     case "isNotEmpty": return !isEmpty(actual)
-    case "greaterThan": return !Number.isNaN(compare(actual, expected)) && compare(actual, expected) > 0
-    case "lessThan": return !Number.isNaN(compare(actual, expected)) && compare(actual, expected) < 0
+    case "greaterThan": return !isEmpty(actual) && !Number.isNaN(compare(actual, expected)) && compare(actual, expected) > 0
+    case "lessThan": return !isEmpty(actual) && !Number.isNaN(compare(actual, expected)) && compare(actual, expected) < 0
     case "between": {
       const upper = condition.secondValue ?? ""
-      return !Number.isNaN(compare(actual, expected)) && !Number.isNaN(compare(actual, upper)) &&
+      return !isEmpty(actual) && !Number.isNaN(compare(actual, expected)) && !Number.isNaN(compare(actual, upper)) &&
         compare(actual, expected) >= 0 && compare(actual, upper) <= 0
     }
     case "before": return !isEmpty(actual) && String(actual) < expected
