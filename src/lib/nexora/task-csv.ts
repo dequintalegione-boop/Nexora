@@ -133,7 +133,7 @@ function encodeTaskValue(value: unknown): string {
   if (typeof value === "boolean") return value ? "true" : "false"
   const text = String(value)
   // Prefix formula-like text so opening CSV in spreadsheet software cannot execute it.
-  return /^[\\s\\u0000]*[=+@-]/.test(text) ? "'" + text : text
+  return /^[\s\u0000]*[=+@-]/.test(text) ? "'" + text : text
 }
 
 /** Export all task fields in a UTF-8 CSV that can be round-tripped by Nexora. */
@@ -297,7 +297,7 @@ function cellFor(row: string[], fieldIndexes: Map<keyof Task, number>, field: ke
   const index = fieldIndexes.get(field)
   if (index === undefined) return ""
   const value = (row[index] ?? "").trim()
-  return safeCsv && value.startsWith("'") && /^[\\s\\u0000]*[=+@-]/.test(value.slice(1))
+  return safeCsv && value.startsWith("'") && /^[\s\u0000]*[=+@-]/.test(value.slice(1))
     ? value.slice(1)
     : value
 }
