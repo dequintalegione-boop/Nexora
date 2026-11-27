@@ -127,6 +127,11 @@ function monthName(year: number, month: number) {
 }
 
 export function CalendarPage() {
+  const settings = useNexora((s) => s.settings)
+  const updateSettings = useNexora((s) => s.updateSettings)
+  const snapMinutes = settings.calendarSnapMinutes ?? 15
+  const pixelsPerHour = settings.calendarPixelsPerHour ?? 88
+  const fitToWindow = settings.calendarFitToWindow ?? false
   const [now, setNow] = useState(() => new Date())
   const calendarScrollRef = useRef<HTMLDivElement | null>(null)
   const miniCalendarRef = useRef<HTMLDivElement | null>(null)
@@ -155,9 +160,6 @@ export function CalendarPage() {
   const [miniCalendarOpen, setMiniCalendarOpen] = useState(false)
   const [slotStartHour, setSlotStartHour] = useState(6)
   const [slotEndHour, setSlotEndHour] = useState(22)
-  const [snapMinutes, setSnapMinutes] = useState(15)
-  const [pixelsPerHour, setPixelsPerHour] = useState(88)
-  const [fitToWindow, setFitToWindow] = useState(false)
   const gridSlotHeight = (pixelsPerHour * snapMinutes) / 60
   const [resizeDraft, setResizeDraft] = useState<ResizeDraft | null>(null)
   const [slotSelection, setSlotSelection] = useState<SlotSelectionDraft | null>(null)
@@ -262,7 +264,7 @@ export function CalendarPage() {
       const fixedHeight = container.scrollHeight - grid.getBoundingClientRect().height
       const next = getCalendarFitPixelsPerHour(container.clientHeight, fixedHeight, slotStartHour, slotEndHour)
       if (next === null) return
-      setPixelsPerHour((current) => current === next ? current : next)
+      if (pixelsPerHour !== next) updateSettings({ calendarPixelsPerHour: next })
     }
     const scheduleFit = () => {
       if (frame) window.cancelAnimationFrame(frame)
@@ -279,7 +281,7 @@ export function CalendarPage() {
       observer.disconnect()
       if (frame) window.cancelAnimationFrame(frame)
     }
-  }, [fitToWindow, view, slotStartHour, slotEndHour, snapMinutes])
+  }, [fitToWindow, view, slotStartHour, slotEndHour, snapMinutes, pixelsPerHour, updateSettings])
 
   useEffect(() => {
     if (fitToWindow || (view !== "week" && view !== "days" && view !== "day")) return
@@ -296,7 +298,6 @@ export function CalendarPage() {
   }, [view, selected, slotStartHour, slotEndHour, fitToWindow])
 
   const weekStartsOn = useNexora((s) => s.settings.weekStartsOn)
-  const settings = useNexora((s) => s.settings)
   const tasks = useNexora((s) => s.tasks)
   const projects = useNexora((s) => s.projects)
   const sessions = useNexora((s) => s.sessions)
@@ -1526,7 +1527,7 @@ export function CalendarPage() {
               <select
                 className="nexora-calendar-control"
                 value={snapMinutes}
-                onChange={(event) => setSnapMinutes(Number(event.target.value))}
+                onChange={(event) => updateSettings({ calendarSnapMinutes: Number(event.target.value) as 15 | 30 | 60 })}
                 aria-label="Шаг сетки"
               >
                 <option value={15}>15 мин</option>
@@ -1539,7 +1540,7 @@ export function CalendarPage() {
               className="nexora-calendar-fit-button"
               aria-pressed={fitToWindow}
               title="Вписать весь диапазон времени в окно"
-              onClick={() => setFitToWindow((value) => !value)}
+              onClick={() => updateSettings({ calendarFitToWindow: !fitToWindow })}
             >
               Вписать
             </button>
@@ -1550,10 +1551,10 @@ export function CalendarPage() {
                 aria-label="Уменьшить масштаб"
                 title="Уменьшить масштаб"
                 disabled={pixelsPerHour <= 20}
-                onClick={() => {
-                  setFitToWindow(false)
-                  setPixelsPerHour((value) => Math.max(20, value - 11))
-                }}
+                onClick={() => updateSettings({
+                  calendarFitToWindow: false,
+                  calendarPixelsPerHour: Math.max(20, pixelsPerHour - 11),
+                })}
               >−</button>
               <output aria-live="polite">{pixelsPerHour} px/ч</output>
               <button
@@ -1561,10 +1562,10 @@ export function CalendarPage() {
                 aria-label="Увеличить масштаб"
                 title="Увеличить масштаб"
                 disabled={pixelsPerHour >= 200}
-                onClick={() => {
-                  setFitToWindow(false)
-                  setPixelsPerHour((value) => Math.min(200, value + 11))
-                }}
+                onClick={() => updateSettings({
+                  calendarFitToWindow: false,
+                  calendarPixelsPerHour: Math.min(200, pixelsPerHour + 11),
+                })}
               >+</button>
             </div>
             {view === "days" ? (
