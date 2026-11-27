@@ -16,7 +16,7 @@
 - Архив / восстановление / корзина / окончательное удаление; родительские задачи, подзадачи, зависимости без циклов.
 - Представления списка, таблицы и Kanban (группировка по статусу, приоритету, проекту).
 - Сохраняемые пользовательские представления, колонки, массовые операции, шаблоны задач (локально в UI-профиле).
-- **Календарь (обновлённый time-grid):** год, месяц, неделя, произвольный диапазон 2–10 дней, день и список на 14 дней; отдельная all-day полоса; получасовые слоты с настройкой видимого интервала; параллельная раскладка пересекающихся задач; подсветка текущего дня и линия текущего времени; drag-and-drop между слотами/датами; растягивание начала и конца блока; создание задачи из выбранного слота; фильтры запланированных задач/дедлайнов и отображение выходных. Виртуальные повторения остаются read-only в календаре, чтобы не менять серию неявно.
+- **Календарь (time-grid и интерфейс планирования):** год, месяц, неделя, диапазон 2–10 дней, день и список на 14 дней; компактная панель навигации и фильтров; поиск задач, фильтры по проекту/приоритету, переключатели дедлайнов/запланированных задач/выходных/фактического времени; отдельная all-day полоса; получасовая сетка; выделение временного диапазона мышью с созданием блока нужной длительности; параллельная раскладка задач и time sessions; подсветка текущего дня и линия текущего времени; drag-and-drop и resize блоков. Виртуальные повторения остаются read-only.
 - **Локальные автоматизации задач:**
   - триггеры: создание, смена статуса, завершение, **`task.due`**, **`task.due_soon`** (`daysBefore`);
   - условия: статус, приоритет, проект, метка, название; вложенные группы AND/OR;
@@ -51,7 +51,7 @@
 
 ## Автоматические тесты
 
-Покрыты: TaskRepository / TaskService / TaskEvents (repository ID validation, post-commit events, committed-change publishing, dedupe, nested dispatch, handler isolation, safe snapshots, custom completed statuses, no-op updates, single moved event, CRUD lifecycle, relation integrity, timer/Pomodoro event contract), шаблоны, автоматизации (AND/OR, `task.due`, `task.due_soon`), миграции схемы, каталог статусов (в т.ч. select options и fallback), напоминания, фильтры, Kanban, календарь (раскладка пересечений, создание временного блока, resize, перенос и all-day), быстрый ввод (weekdays/estimate/project/status/custom status id), повторения, Pomodoro (длительности и последовательность циклов), корректировка time sessions, JSON-бэкап (новый и старый формат, round-trip UI и данных, отказ на некорректном/дублированном/будущем формате).
+Покрыты: TaskRepository / TaskService / TaskEvents (repository ID validation, post-commit events, committed-change publishing, dedupe, nested dispatch, handler isolation, safe snapshots, custom completed statuses, no-op updates, single moved event, CRUD lifecycle, relation integrity, timer/Pomodoro event contract), шаблоны, автоматизации (AND/OR, `task.due`, `task.due_soon`), миграции схемы, каталог статусов (в т.ч. select options и fallback), напоминания, фильтры, Kanban, календарь (пересечения, диапазон мышью, time sessions, фильтры, создание/resize/перенос и all-day), быстрый ввод (weekdays/estimate/project/status/custom status id), повторения, Pomodoro (длительности и последовательность циклов), корректировка time sessions, JSON-бэкап (новый и старый формат, round-trip UI и данных, отказ на некорректном/дублированном/будущем формате).
 
 CI: unit-тесты, TypeScript typecheck, production build.
 
