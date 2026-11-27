@@ -8,7 +8,9 @@ import { Button, Card, Input, Select, Badge } from "./ui"
 import { getDependencyState, getTaskChildren } from "@/lib/nexora/task-logic"
 import { parseQuickTaskInput } from "@/lib/nexora/quick-task"
 import { createTaskFilterGroup, matchesTaskFilterGroup, type TaskFilterGroup } from "@/lib/nexora/task-filters"
-import { TaskFilterBuilder } from "./task-filter-builder"\nimport { getKanbanColumns, getKanbanDropPatch, getKanbanTaskColumnIds } from "@/lib/nexora/kanban"\nimport type { KanbanGroupBy } from "@/lib/nexora/kanban"
+import { TaskFilterBuilder } from "./task-filter-builder"
+import { getKanbanColumns, getKanbanDropPatch, getKanbanTaskColumnIds } from "@/lib/nexora/kanban"
+import type { KanbanGroupBy } from "@/lib/nexora/kanban"
 
 export function TasksPage() {
   const tasks = useNexora((s) => s.tasks)
@@ -28,7 +30,9 @@ export function TasksPage() {
   const saveTaskView = useUI((s) => s.saveTaskView)
   const removeTaskView = useUI((s) => s.removeTaskView)
   const taskTableColumns = useUI((s) => s.taskTableColumns ?? DEFAULT_TASK_TABLE_COLUMNS)
-  const toggleTaskTableColumn = useUI((s) => s.toggleTaskTableColumn)\n  const kanbanGroupBy = useUI((s) => s.kanbanGroupBy)\n  const setKanbanGroupBy = useUI((s) => s.setKanbanGroupBy)
+  const toggleTaskTableColumn = useUI((s) => s.toggleTaskTableColumn)
+  const kanbanGroupBy = useUI((s) => s.kanbanGroupBy)
+  const setKanbanGroupBy = useUI((s) => s.setKanbanGroupBy)
 
   const [view, setView] = useState<"active" | "archive" | "trash">("active")
   const [layout, setLayout] = useState<"list" | "table" | "kanban">("list")
@@ -79,7 +83,8 @@ export function TasksPage() {
       })
   }, [tasks, filter, priorityFilter, projectFilter, search, view, quickFilter, today, weekLimit, sortBy, advancedFilter])
 
-  const kanbanColumns = getKanbanColumns(kanbanGroupBy, projects, statusLabels, priorityLabels)\n  const selectedCount = selectedTaskIds.filter((id) => filtered.some((task) => task.id === id)).length
+  const kanbanColumns = getKanbanColumns(kanbanGroupBy, projects, statusLabels, priorityLabels)
+  const selectedCount = selectedTaskIds.filter((id) => filtered.some((task) => task.id === id)).length
   const toggleTaskSelection = (id: string) => {
     setSelectedTaskIds((current) => current.includes(id)
       ? current.filter((item) => item !== id)
