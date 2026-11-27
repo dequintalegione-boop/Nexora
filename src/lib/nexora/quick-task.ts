@@ -68,14 +68,14 @@ export function parseQuickTaskInput(input: string, today: string): QuickTaskDraf
     return prefix
   })
 
-    remaining = remaining.replace(/(^|\\s)до\\s+через\\s+(\\d{1,3})\\s+(день|дня|дней)(?=\\s|$)/giu, (match, prefix: string, amountText: string) => {
+    remaining = remaining.replace(/(^|\s)до\s+через\s+(\d{1,3})\s+(день|дня|дней)(?=\s|$)/giu, (match, prefix: string, amountText: string) => {
     const amount = Number(amountText)
     if (amount < 1 || amount > 365) return match
     dueDate = addCalendarDays(today, amount)
     return prefix
   })
 
-  remaining = remaining.replace(/(^|\\s)до\\s+через\\s+(\\d{1,2})\\s+(неделя|недели|недель)(?=\\s|$)/giu, (match, prefix: string, amountText: string) => {
+  remaining = remaining.replace(/(^|\s)до\s+через\s+(\d{1,2})\s+(неделя|недели|недель)(?=\s|$)/giu, (match, prefix: string, amountText: string) => {
     const amount = Number(amountText)
     if (amount < 1 || amount > 52) return match
     dueDate = addCalendarDays(today, amount * 7)
