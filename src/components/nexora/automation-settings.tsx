@@ -74,6 +74,7 @@ const TRIGGER_LABEL: Record<AutomationTrigger, string> = {
   "task.status_changed": "Смена статуса",
   "task.completed": "Завершение задачи",
   "task.due": "Наступление срока",
+  "task.due_soon": "За N дней до срока",
 }
 
 export function AutomationSettingsCard() {
@@ -87,6 +88,7 @@ export function AutomationSettingsCard() {
 
   const [ruleName, setRuleName] = useState("")
   const [trigger, setTrigger] = useState<AutomationTrigger>("task.created")
+  const [daysBefore, setDaysBefore] = useState(1)
   const [actionType, setActionType] = useState<AutomationAction["type"]>("set_priority")
   const [actionValue, setActionValue] = useState("high")
   const [conditionField, setConditionField] = useState<ConditionField | "none">("none")
@@ -105,14 +107,27 @@ export function AutomationSettingsCard() {
     const open = tasks.filter(
       (t) => !t.archived && !t.deletedAt && t.status !== "done" && t.status !== "cancelled",
     )
+    const today = new Date().toISOString().slice(0, 10)
     if (trigger === "task.due") {
-      const today = new Date().toISOString().slice(0, 10)
       return open.filter(
         (t) => t.dueDate && t.dueDate <= today && matchesAutomationConditions(t, draftConditionTree),
       ).length
     }
+    if (trigger === "task.due_soon") {
+      const days = Math.max(1, Math.floor(daysBefore) || 1)
+      const horizonDate = new Date(`${today}T00:00:00.000Z`)
+      horizonDate.setUTCDate(horizonDate.getUTCDate() + days)
+      const horizon = horizonDate.toISOString().slice(0, 10)
+      return open.filter(
+        (t) =>
+          t.dueDate &&
+          t.dueDate > today &&
+          t.dueDate <= horizon &&
+          matchesAutomationConditions(t, draftConditionTree),
+      ).length
+    }
     return open.filter((t) => matchesAutomationConditions(t, draftConditionTree)).length
-  }, [tasks, trigger, draftConditionTree])
+  }, [tasks, trigger, draftConditionTree, daysBefore])
 
   const previewActionLabel = useMemo(() => {
     let action: AutomationAction
@@ -164,12 +179,20 @@ export function AutomationSettingsCard() {
       conditions = [{ operator: "or", conditions: draftConditions }]
     }
 
-    addAutomationRule({ name, enabled: true, trigger, conditions, action })
+    addAutomationRule({
+      name,
+      enabled: true,
+      trigger,
+      conditions,
+      action,
+      ...(trigger === "task.due_soon" ? { daysBefore: Math.max(1, Math.floor(daysBefore) || 1) } : {}),
+    })
     setRuleName("")
     setDraftConditions([])
     setConditionValue("")
     setConditionField("none")
     setLogic("and")
+    setDaysBefore(1)
   }
 
   const filteredRuns = automationRuns.filter((run) => {
@@ -199,6 +222,7 @@ export function AutomationSettingsCard() {
             <option value="task.status_changed">При смене статуса</option>
             <option value="task.completed">При завершении задачи</option>
             <option value="task.due">При наступлении срока</option>
+            <option value="task.due_soon">За N дней до срока</option>
           </Select>
 
           <Select
@@ -210,6 +234,21 @@ export function AutomationSettingsCard() {
             <option value="or">Любое условие (ИЛИ)</option>
           </Select>
         </div>
+
+        {trigger === "task.due_soon" && (
+          <div className="flex items-center gap-2 text-sm">
+            <label className="text-muted shrink-0" htmlFor="days-before">За сколько дней:</label>
+            <Input
+              id="days-before"
+              type="number"
+              min={1}
+              max={90}
+              className="w-24"
+              value={daysBefore}
+              onChange={(e) => setDaysBefore(Math.max(1, Number(e.target.value) || 1))}
+            />
+          </div>
+        )}
 
         {draftConditions.length > 0 && (
           <div className="space-y-1 rounded-lg border border-border p-2">
@@ -383,6 +422,13 @@ export function AutomationSettingsCard() {
                   открытых задач со сроком сегодня или раньше
                   {draftConditions.length > 0 ? " и подходящими условиями" : ""}.
                 </>
+              ) : trigger === "task.due_soon" ? (
+                <>
+                  В окне ближайших {Math.max(1, Math.floor(daysBefore) || 1)} дн. (не считая сегодня) —{" "}
+                  <span className="text-foreground/90 font-medium">{previewMatchCount}</span>{" "}
+                  открытых задач
+                  {draftConditions.length > 0 ? " с подходящими условиями" : ""}.
+                </>
               ) : (
                 <>
                   Среди открытых задач условиям соответствуют{" "}
@@ -415,7 +461,10 @@ export function AutomationSettingsCard() {
               <div className="min-w-0 space-y-0.5">
                 <p className="text-sm font-medium">{rule.name}</p>
                 <p className="text-xs text-muted">
-                  {TRIGGER_LABEL[rule.trigger] ?? rule.trigger} · {formatAction(rule.action, projects)}
+                  {TRIGGER_LABEL[rule.trigger] ?? rule.trigger}
+                  {rule.trigger === "task.due_soon" ? ` (${rule.daysBefore ?? 1} дн.)` : ""}
+                  {" · "}
+                  {formatAction(rule.action, projects)}
                 </p>
                 <p className="text-xs text-muted">
                   {formatConditionsSummary(rule.conditions, projects)}
