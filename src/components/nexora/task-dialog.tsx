@@ -1,6 +1,6 @@
 import { useNexora } from "@/lib/nexora/store"
 import { useUI } from "@/lib/nexora/ui-store"
-import { getTaskStatusLabels, getTaskPriorityLabels } from "@/lib/nexora/copy"
+import { getStatusSelectOptions, getPrioritySelectOptions } from "@/lib/nexora/copy"
 import type { RecurrenceFrequency } from "@/lib/nexora/types"
 import type { TaskStatus, Priority } from "@/lib/nexora/types"
 import { Button, Card, Input, Select, Textarea } from "./ui"
@@ -11,8 +11,6 @@ export function TaskDialog() {
   const setTaskId = useUI((s) => s.setTaskId)
   const tasks = useNexora((s) => s.tasks)
   const settings = useNexora((s) => s.settings)
-  const statusLabels = getTaskStatusLabels(settings)
-  const priorityLabels = getTaskPriorityLabels(settings)
   const addTask = useNexora((s) => s.addTask)
   const projects = useNexora((s) => s.projects)
   const updateTask = useNexora((s) => s.updateTask)
@@ -31,6 +29,8 @@ export function TaskDialog() {
   if (!task) return null
   const dependencyState = getDependencyState(task, tasks)
   const children = getTaskChildren(tasks, task.id)
+  const statusOptions = getStatusSelectOptions(settings, task.status)
+  const priorityOptions = getPrioritySelectOptions(settings, task.priority)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setTaskId(null)}>
@@ -48,16 +48,16 @@ export function TaskDialog() {
           <div>
             <label className="text-xs text-muted">Статус</label>
             <Select value={task.status} onChange={(e) => setTaskStatus(task.id, e.target.value as TaskStatus)}>
-              {Object.entries(statusLabels).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
+              {statusOptions.map((s) => (
+                <option key={s.id} value={s.id}>{s.label}</option>
               ))}
             </Select>
           </div>
           <div>
             <label className="text-xs text-muted">Приоритет</label>
             <Select value={task.priority} onChange={(e) => updateTask(task.id, { priority: e.target.value as Priority })}>
-              {Object.entries(priorityLabels).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
+              {priorityOptions.map((p) => (
+                <option key={p.id} value={p.id}>{p.label}</option>
               ))}
             </Select>
           </div>
