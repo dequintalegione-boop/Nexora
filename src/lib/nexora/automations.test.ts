@@ -1,6 +1,11 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { getTasksDueForAutomation, matchesAutomationConditions, runTaskAutomations } from "./automations.ts"
+import {
+  getTasksDueForAutomation,
+  getTasksDueSoonForAutomation,
+  matchesAutomationConditions,
+  runTaskAutomations,
+} from "./automations.ts"
 import type { Task } from "./types.ts"
 import type { TaskAutomationRule, AutomationConditionGroup } from "./automations.ts"
 
@@ -266,4 +271,76 @@ test("task.due trigger executes matching rule", () => {
   assert.equal(result.tasks[0].priority, "critical")
   assert.equal(result.runs[0].result, "success")
   assert.equal(result.runs[0].trigger, "task.due")
+})
+
+test("getTasksDueSoonForAutomation selects tasks within the window", () => {
+  const soon: Task = {
+    ...task,
+    id: "soon-1",
+    dueDate: "2026-11-30",
+    status: "planned",
+  }
+  const far: Task = {
+    ...task,
+    id: "far-1",
+    dueDate: "2026-12-20",
+    status: "planned",
+  }
+  const todayTask: Task = {
+    ...task,
+    id: "today-1",
+    dueDate: "2026-11-27",
+    status: "planned",
+  }
+  const now = new Date("2026-11-27T12:00:00.000Z")
+  const candidates = getTasksDueSoonForAutomation([soon, far, todayTask], [], 3, now)
+  assert.equal(candidates.length, 1)
+  assert.equal(candidates[0].id, "soon-1")
+})
+
+test("getTasksDueSoonForAutomation skips tasks already successful today", () => {
+  const soon: Task = {
+    ...task,
+    id: "soon-2",
+    dueDate: "2026-11-29",
+    status: "planned",
+  }
+  const now = new Date("2026-11-27T12:00:00.000Z")
+  const runs = [{
+    id: "r2",
+    ruleId: "rule-y",
+    taskId: "soon-2",
+    trigger: "task.due_soon" as const,
+    executedAt: "2026-11-27T08:00:00.000Z",
+    result: "success" as const,
+    message: "ok",
+  }]
+  const candidates = getTasksDueSoonForAutomation([soon], runs, 5, now)
+  assert.equal(candidates.length, 0)
+})
+
+test("task.due_soon trigger executes matching rule", () => {
+  const soonTask: Task = {
+    ...task,
+    id: "soon-3",
+    dueDate: "2026-11-30",
+    status: "planned",
+    priority: "low",
+  }
+  const soonRule = rule({
+    id: "soon-rule",
+    trigger: "task.due_soon",
+    daysBefore: 3,
+    conditions: [],
+    action: { type: "add_tag", value: "скоро" },
+  })
+  const result = runTaskAutomations([soonTask], [soonRule], {
+    type: "task.due_soon",
+    taskId: soonTask.id,
+    eventId: "event-soon",
+    occurredAt: "2026-11-27T12:00:00.000Z",
+  })
+  assert.deepEqual(result.tasks[0].tags, ["работа", "скоро"])
+  assert.equal(result.runs[0].result, "success")
+  assert.equal(result.runs[0].trigger, "task.due_soon")
 })
