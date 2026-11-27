@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react"
+import { Fragment, useMemo, useState } from "react"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { addDays, isoDate, monthGrid, parseISODate, startOfWeek } from "@/lib/nexora/dates"
 import { isScheduled, logKey, logMap, isDoneLog } from "@/lib/nexora/logic"
-import { getCalendarDropPatch, getCalendarTaskTime } from "@/lib/nexora/calendar"
+import { getCalendarDayDropPatch, getCalendarDropPatch, getCalendarTaskTime } from "@/lib/nexora/calendar"
 import { useNexora } from "@/lib/nexora/store"
 import { useUI } from "@/lib/nexora/ui-store"
 import { cn } from "@/lib/cn"
@@ -176,7 +176,7 @@ export function CalendarPage() {
                   onDrop={(event) => {
                     event.preventDefault()
                     const id = event.dataTransfer.getData("text/task-id")
-                    if (id) updateTask(id, { scheduledDate: day })
+                    if (id) {\n                      const task = tasks.find((item) => item.id === id)\n                      if (task) updateTask(id, getCalendarDayDropPatch(task, day))\n                    }
                   }}
                   className={cn(
                     "min-h-16 rounded-xl border px-1.5 py-1.5 text-left transition",
@@ -221,7 +221,7 @@ export function CalendarPage() {
                       onDrop={(event) => {
                         event.preventDefault()
                         const id = event.dataTransfer.getData("text/task-id")
-                        if (id) updateTask(id, { scheduledDate: day, allDay: true })
+                        if (id) updateTask(id, { scheduledDate: day, allDay: true, startAt: undefined, endAt: undefined })
                       }}
                     >
                       {allDayTasks.map((task) => renderTask(task, true))}
