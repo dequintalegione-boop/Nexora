@@ -79,8 +79,6 @@ const HEADS = {
   0: ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"],
 } as const
 
-const SLOT_STEP = 30
-const ROW_HEIGHT = 44
 const LIST_DAYS = 14
 const PRIORITY_COLOR: Record<string, string> = {
   none: "nexora-calendar-priority-none",
@@ -156,6 +154,9 @@ export function CalendarPage() {
   const [miniCalendarOpen, setMiniCalendarOpen] = useState(false)
   const [slotStartHour, setSlotStartHour] = useState(6)
   const [slotEndHour, setSlotEndHour] = useState(22)
+  const [snapMinutes, setSnapMinutes] = useState(15)
+  const [pixelsPerHour, setPixelsPerHour] = useState(88)
+  const gridSlotHeight = (pixelsPerHour * snapMinutes) / 60
   const [resizeDraft, setResizeDraft] = useState<ResizeDraft | null>(null)
   const [slotSelection, setSlotSelection] = useState<SlotSelectionDraft | null>(null)
   const slotSelectionRef = useRef<SlotSelectionDraft | null>(null)
@@ -698,7 +699,7 @@ export function CalendarPage() {
         rect.height,
         Number(zone.dataset.calendarDropStart),
         Number(zone.dataset.calendarDropEnd),
-        SLOT_STEP,
+        snapMinutes,
       )
       return { day, minutes, allDay: false }
     }
@@ -821,18 +822,18 @@ export function CalendarPage() {
 
   const handleResizeMove = (event: PointerEvent<HTMLSpanElement>, taskId: string) => {
     if (!resizeDraft || resizeDraft.taskId !== taskId || resizeDraft.pointerId !== event.pointerId) return
-    const steps = Math.round((event.clientY - resizeDraft.startY) / ROW_HEIGHT)
+    const steps = Math.round((event.clientY - resizeDraft.startY) / gridSlotHeight)
     if (resizeDraft.edge === "start") {
       const nextStart = Math.max(
         0,
-        Math.min(resizeDraft.end - 15, Math.round((resizeDraft.start + steps * SLOT_STEP) / 15) * 15),
+        Math.min(resizeDraft.end - snapMinutes, Math.round((resizeDraft.start + steps * snapMinutes) / snapMinutes) * snapMinutes),
       )
       setResizeDraft({ ...resizeDraft, previewStart: nextStart })
       return
     }
     const nextEnd = Math.max(
-      resizeDraft.start + 15,
-      Math.min(24 * 60, Math.round((resizeDraft.end + steps * SLOT_STEP) / 15) * 15),
+      resizeDraft.start + snapMinutes,
+      Math.min(24 * 60, Math.round((resizeDraft.end + steps * snapMinutes) / snapMinutes) * snapMinutes),
     )
     setResizeDraft({ ...resizeDraft, previewEnd: nextEnd })
   }
@@ -861,7 +862,7 @@ export function CalendarPage() {
       startY: event.clientY,
       anchorMinutes: minutes,
       start: minutes,
-      end: minutes + SLOT_STEP,
+      end: minutes + snapMinutes,
       slotStart,
       slotEnd,
     }
@@ -872,8 +873,8 @@ export function CalendarPage() {
   const updateTimeSelection = (event: PointerEvent<HTMLDivElement>) => {
     const current = slotSelectionRef.current
     if (!current || current.pointerId !== event.pointerId) return
-    const deltaSteps = Math.round((event.clientY - current.startY) / ROW_HEIGHT)
-    const range = getCalendarSelectionRange(current.anchorMinutes, deltaSteps, SLOT_STEP, current.slotStart, current.slotEnd)
+    const deltaSteps = Math.round((event.clientY - current.startY) / gridSlotHeight)
+    const range = getCalendarSelectionRange(current.anchorMinutes, deltaSteps, snapMinutes, current.slotStart, current.slotEnd)
     const next = { ...current, start: range.start, end: range.end }
     slotSelectionRef.current = next
     setSlotSelection(next)
@@ -882,8 +883,8 @@ export function CalendarPage() {
   const finishTimeSelection = (event: PointerEvent<HTMLDivElement>) => {
     const current = slotSelectionRef.current
     if (!current || current.pointerId !== event.pointerId) return
-    const deltaSteps = Math.round((event.clientY - current.startY) / ROW_HEIGHT)
-    const range = getCalendarSelectionRange(current.anchorMinutes, deltaSteps, SLOT_STEP, current.slotStart, current.slotEnd)
+    const deltaSteps = Math.round((event.clientY - current.startY) / gridSlotHeight)
+    const range = getCalendarSelectionRange(current.anchorMinutes, deltaSteps, snapMinutes, current.slotStart, current.slotEnd)
     slotSelectionRef.current = null
     setSlotSelection(null)
     setSelectedDate(current.day)
@@ -901,8 +902,8 @@ export function CalendarPage() {
   const renderTimeGrid = (days: string[]) => {
     const slotStart = slotStartHour * 60
     const slotEnd = slotEndHour * 60
-    const timeSlots = Array.from({ length: (slotEnd - slotStart) / SLOT_STEP }, (_, i) => slotStart + i * SLOT_STEP)
-    const gridHeight = timeSlots.length * ROW_HEIGHT
+    const timeSlots = Array.from({ length: (slotEnd - slotStart) / snapMinutes }, (_, i) => slotStart + i * snapMinutes)
+    const gridHeight = timeSlots.length * gridSlotHeight
     const nowMinutes = now.getHours() * 60 + now.getMinutes()
 
     return (
@@ -923,8 +924,8 @@ export function CalendarPage() {
                 data-calendar-drop-day={day}
                 data-calendar-drop-all-day="true"
                 className={cn(
-                  "nexora-calendar-all-day min-h-[4.5rem] space-y-1 border-r border-white/10 p-1.5",
-                  day === today && "bg-sky-400/[0.055]",
+                  "nexora-calendar-all-day min-h-[2.75rem] space-y-1 border-r border-white/10 p-1.5",
+                  day === today && "nexora-calendar-today-column",
                   touchTaskDrag?.active && touchTaskDrag.target?.day === day && touchTaskDrag.target.allDay && "nexora-calendar-drop-target",
                 )}
                 onDragOver={(event) => event.preventDefault()}
@@ -949,7 +950,7 @@ export function CalendarPage() {
               <div
                 key={minutes}
                 className="nexora-calendar-time-label absolute right-2 -translate-y-1/2 text-[10px] tabular-nums text-white/45"
-                style={{ top: ((minutes - slotStart) / SLOT_STEP) * ROW_HEIGHT }}
+                style={{ top: ((minutes - slotStart) / snapMinutes) * gridSlotHeight }}
               >
                 {localTimeLabel(minutes)}
               </div>
@@ -998,13 +999,17 @@ export function CalendarPage() {
                     data-calendar-drop-minutes={minutes}
                     className={cn(
                       "absolute inset-x-0 border-t transition-colors nexora-calendar-slot",
-                      minutes % 60 === 0 ? "nexora-calendar-slot-hour" : "nexora-calendar-slot-half",
+                      minutes % 60 === 0
+                        ? "nexora-calendar-slot-hour"
+                        : minutes % 30 === 0
+                          ? "nexora-calendar-slot-half"
+                          : "nexora-calendar-slot-quarter",
                       "hover:bg-white/[0.025]",
                       touchTaskDrag?.active && touchTaskDrag.target?.day === day && touchTaskDrag.target.minutes === minutes && "nexora-calendar-drop-target",
                     )}
                     style={{
-                      top: ((minutes - slotStart) / SLOT_STEP) * ROW_HEIGHT,
-                      height: ROW_HEIGHT,
+                      top: ((minutes - slotStart) / snapMinutes) * gridSlotHeight,
+                      height: gridSlotHeight,
                     }}
                     role="button"
                     tabIndex={0}
@@ -1030,8 +1035,8 @@ export function CalendarPage() {
                   <div
                     className="nexora-calendar-selection absolute inset-x-1 z-[1] rounded-md"
                     style={{
-                      top: ((slotSelection.start - slotStart) / SLOT_STEP) * ROW_HEIGHT,
-                      height: Math.max(ROW_HEIGHT / 2, ((slotSelection.end - slotSelection.start) / SLOT_STEP) * ROW_HEIGHT),
+                      top: ((slotSelection.start - slotStart) / snapMinutes) * gridSlotHeight,
+                      height: Math.max(gridSlotHeight / 2, ((slotSelection.end - slotSelection.start) / snapMinutes) * gridSlotHeight),
                     }}
                   >
                     <span>{formatRange(slotSelection.start, slotSelection.end)}</span>
@@ -1045,8 +1050,8 @@ export function CalendarPage() {
                   const previewEnd = resizeDraft?.taskId === task.id ? resizeDraft.previewEnd : rawEnd
                   const visibleStart = Math.max(slotStart, previewStart)
                   const visibleEnd = Math.min(slotEnd, previewEnd)
-                  const top = ((visibleStart - slotStart) / SLOT_STEP) * ROW_HEIGHT
-                  const height = Math.max(25, ((visibleEnd - visibleStart) / SLOT_STEP) * ROW_HEIGHT)
+                  const top = ((visibleStart - slotStart) / snapMinutes) * gridSlotHeight
+                  const height = Math.max(Math.min(25, gridSlotHeight), ((visibleEnd - visibleStart) / snapMinutes) * gridSlotHeight)
                   const isDueOnly = task.dueDate === day && task.scheduledDate !== day && task.startAt?.slice(0, 10) !== day
                   const colorClass = PRIORITY_COLOR[task.priority] ?? PRIORITY_COLOR.none
                   return (
@@ -1136,8 +1141,8 @@ export function CalendarPage() {
                   if (!layoutItem) return null
                   const visibleStart = Math.max(slotStart, rawStart)
                   const visibleEnd = Math.min(slotEnd, rawEnd)
-                  const top = ((visibleStart - slotStart) / SLOT_STEP) * ROW_HEIGHT
-                  const height = Math.max(25, ((visibleEnd - visibleStart) / SLOT_STEP) * ROW_HEIGHT)
+                  const top = ((visibleStart - slotStart) / snapMinutes) * gridSlotHeight
+                  const height = Math.max(Math.min(25, gridSlotHeight), ((visibleEnd - visibleStart) / snapMinutes) * gridSlotHeight)
                   const linkedTask = session.taskId ? tasks.find((task) => task.id === session.taskId) : undefined
                   return (
                     <button
@@ -1170,7 +1175,7 @@ export function CalendarPage() {
                   <div
                     className="nexora-calendar-now-marker pointer-events-none absolute inset-x-0 z-[4] flex items-center"
                     data-calendar-now-marker="true"
-                    style={{ top: ((nowMinutes - slotStart) / SLOT_STEP) * ROW_HEIGHT }}
+                    style={{ top: ((nowMinutes - slotStart) / snapMinutes) * gridSlotHeight }}
                     aria-label="Текущее время"
                   >
                     <span className="-ml-1.5 h-2.5 w-2.5 rounded-full bg-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.65)]" />
@@ -1484,6 +1489,36 @@ export function CalendarPage() {
 
         {(view === "days" || view === "week" || view === "day") ? (
           <div className="nexora-calendar-range-controls">
+            <label>Шаг
+              <select
+                className="nexora-calendar-control"
+                value={snapMinutes}
+                onChange={(event) => setSnapMinutes(Number(event.target.value))}
+                aria-label="Шаг сетки"
+              >
+                <option value={15}>15 мин</option>
+                <option value={30}>30 мин</option>
+                <option value={60}>1 час</option>
+              </select>
+            </label>
+            <div className="nexora-calendar-zoom" role="group" aria-label="Масштаб сетки">
+              <span>Масштаб</span>
+              <button
+                type="button"
+                aria-label="Уменьшить масштаб"
+                title="Уменьшить масштаб"
+                disabled={pixelsPerHour <= 66}
+                onClick={() => setPixelsPerHour((value) => Math.max(66, value - 11))}
+              >−</button>
+              <output aria-live="polite">{pixelsPerHour} px/ч</output>
+              <button
+                type="button"
+                aria-label="Увеличить масштаб"
+                title="Увеличить масштаб"
+                disabled={pixelsPerHour >= 132}
+                onClick={() => setPixelsPerHour((value) => Math.min(132, value + 11))}
+              >+</button>
+            </div>
             {view === "days" ? (
               <label>Дней
                 <select className="nexora-calendar-control" value={dayCount} onChange={(event) => setDayCount(Number(event.target.value))}>
@@ -1640,10 +1675,9 @@ export function CalendarPage() {
                   )}
                   onClick={() => setSelectedDate(day)}
                 >
-                  <span className="block text-[10px] uppercase tracking-wide text-white/45">
-                    {format(parseISODate(day), "EEE", { locale: ru })}
+                  <span className="block text-[11px] font-medium tabular-nums">
+                    {format(parseISODate(day), "EEE d.MM", { locale: ru })}
                   </span>
-                  <span className="mt-0.5 block text-sm tabular-nums">{format(parseISODate(day), "d.MM", { locale: ru })}</span>
                 </button>
               ))}
             </div>
@@ -1671,8 +1705,7 @@ export function CalendarPage() {
                   )}
                   onClick={() => setSelectedDate(day)}
                 >
-                  <span className="block text-[10px] uppercase tracking-wide text-white/45">{format(parseISODate(day), "EEE", { locale: ru })}</span>
-                  <span className="mt-0.5 block text-sm tabular-nums">{format(parseISODate(day), "d.MM", { locale: ru })}</span>
+                  <span className="block text-[11px] font-medium tabular-nums">{format(parseISODate(day), "EEE d.MM", { locale: ru })}</span>
                 </button>
               ))}
             </div>
