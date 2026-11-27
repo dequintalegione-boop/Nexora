@@ -1437,7 +1437,10 @@ export function CalendarPage() {
                           >
                             <span className="block truncate text-[12px] font-semibold">{task.title}</span>
                             <span className="mt-1 block text-[10px] opacity-65">
-                              {task.dueDate === day ? "Дедлайн" : "Весь день"}
+                              {task.dueDate === day && task.scheduledDate !== day && task.startAt?.slice(0, 10) !== day
+                                ? "Дедлайн"
+                                : task.allDay ? "Весь день" : "Запланировано"}
+                              {task.dueDate === day && (task.scheduledDate === day || task.startAt?.slice(0, 10) === day) ? " · срок сегодня" : ""}
                               {task.virtualOccurrence ? " · повтор " + task.occurrenceDate : ""}
                             </span>
                           </button>
