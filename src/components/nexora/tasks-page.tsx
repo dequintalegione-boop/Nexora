@@ -425,6 +425,10 @@ export function TasksPage() {
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => {
                   if (!draggedTask) return
+                  if (getKanbanTaskColumnIds(draggedTask, kanbanGroupBy).includes(column.id)) {
+                    setDraggedTask(null)
+                    return
+                  }
                   const patch = getKanbanDropPatch(kanbanGroupBy, column.id)
                   if (!patch) {
                     setDraggedTask(null)
@@ -527,7 +531,7 @@ export function TasksPage() {
                 ? <span className="w-36 shrink-0 text-xs text-muted">{statusLabels[task.status] ?? task.status}</span>
                 : <Select value={task.status} onClick={(e) => e.stopPropagation()} onChange={(e) => setTaskStatus(task.id, e.target.value as TaskStatus)} className="w-36">
                 {getStatusSelectOptions(settings, task.status).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-              </Select>
+              </Select>}
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">{task.title}</div>
                 {task.virtualOccurrence && <div className="text-[10px] text-teal-300">Повтор · {task.occurrenceDate}</div>}
