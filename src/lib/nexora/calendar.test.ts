@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { getCalendarCreatePatch, getCalendarDayDropPatch, getCalendarDropPatch, getCalendarResizePatch, getCalendarSelectionRange, getCalendarSessionRange, getCalendarTaskTime, layoutCalendarEvents } from "./calendar.ts"
+import { getCalendarCreatePatch, getCalendarDayDropPatch, getCalendarDropMinutes, getCalendarDropPatch, getCalendarResizePatch, getCalendarSelectionRange, getCalendarSessionRange, getCalendarTaskTime, layoutCalendarEvents } from "./calendar.ts"
 import type { Task, TimeSession } from "./types.ts"
 
 const task: Task = {
@@ -123,4 +123,12 @@ test("completed time sessions are clipped to their local calendar day", () => {
   assert.deepEqual(getCalendarSessionRange(session, "2026-11-27"), { start: 23 * 60 + 30, end: 24 * 60 })
   assert.deepEqual(getCalendarSessionRange(session, "2026-11-28"), { start: 0, end: 60 })
   assert.equal(getCalendarSessionRange(session, "2026-11-29"), null)
+})
+
+
+test("touch drop positions resolve to half-hour slots even over event cards", () => {
+  assert.equal(getCalendarDropMinutes(100, 100, 440, 6 * 60, 11 * 60), 6 * 60)
+  assert.equal(getCalendarDropMinutes(320, 100, 440, 6 * 60, 11 * 60), 8 * 60 + 30)
+  assert.equal(getCalendarDropMinutes(540, 100, 440, 6 * 60, 11 * 60), 10 * 60 + 30)
+  assert.equal(getCalendarDropMinutes(540, 100, 0, 6 * 60, 11 * 60), null)
 })
