@@ -256,10 +256,11 @@ export function CalendarPage() {
     [cursor.year, weekStartsOn],
   )
 
-  const miniMonthDays = useMemo(
-    () => cells.filter((day): day is string => Boolean(day)),
-    [cells],
-  )
+  const miniMonthDays = useMemo(() => {
+    const firstOfMonth = isoDate(new Date(cursor.year, cursor.month, 1))
+    const gridStart = startOfWeek(firstOfMonth, weekStartsOn)
+    return Array.from({ length: cells.length }, (_, index) => addDays(gridStart, index))
+  }, [cursor.year, cursor.month, weekStartsOn, cells.length])
 
   const miniCalendarTasks = useMemo<CalendarTask[]>(() => {
     const firstDay = miniMonthDays[0]
@@ -283,11 +284,16 @@ export function CalendarPage() {
       !task.repeat &&
       (!task.recurrenceParentId || !activeSeriesIds.has(task.recurrenceParentId))
     )
-    const savedInstances = tasks.filter((task) =>
-      Boolean(task.recurrenceParentId && activeSeriesIds.has(task.recurrenceParentId)) &&
+    const savedCandidates = tasks.filter((task) =>
+      Boolean(task.recurrenceParentId && task.occurrenceDate && activeSeriesIds.has(task.recurrenceParentId)) &&
       !task.deletedAt &&
       !task.archived
     )
+    const savedByOccurrence = new Map<string, Task>()
+    for (const task of savedCandidates) {
+      savedByOccurrence.set(task.recurrenceParentId + "::" + task.occurrenceDate, task)
+    }
+    const savedInstances = [...savedByOccurrence.values()]
     const occurrences = expandTaskOccurrences(tasks, firstDay, lastDay).map(({ task, isVirtual, seriesId }) => ({
       ...task,
       virtualOccurrence: isVirtual,
@@ -1263,8 +1269,7 @@ export function CalendarPage() {
                   {HEADS[weekStartsOn].map((label) => <span key={label}>{label}</span>)}
                 </div>
                 <div className="nexora-calendar-mini-days">
-                  {cells.map((day, index) => {
-                    if (!day) return <span key={"mini-empty-" + index} className="nexora-calendar-mini-empty" />
+                  {miniMonthDays.map((day) => {
                     const activity = miniCalendarActivity.get(day)
                     const dayLabel = format(parseISODate(day), "EEEE, d MMMM", { locale: ru })
                     const scheduled = activity?.scheduled ?? 0
