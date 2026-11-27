@@ -2,7 +2,8 @@ import type { TaskAutomationRule, TaskAutomationRun } from "./automations"
 
 export type ID = string
 
-export type TaskStatus =
+/** Built-in status keys kept for backward compatibility. */
+export type BuiltinTaskStatus =
   | "inbox"
   | "planned"
   | "in_progress"
@@ -10,7 +11,35 @@ export type TaskStatus =
   | "done"
   | "cancelled"
 
-export type Priority = "none" | "low" | "medium" | "high" | "critical"
+/** Task status id: built-in key or custom id (e.g. custom_review). */
+export type TaskStatus = BuiltinTaskStatus | (string & {})
+
+export type BuiltinPriority = "none" | "low" | "medium" | "high" | "critical"
+
+/** Priority id: built-in key or custom id. */
+export type Priority = BuiltinPriority | (string & {})
+
+/** User-configurable status definition. */
+export interface StatusDefinition {
+  id: string
+  label: string
+  /** Semantic role: open work, completed, or cancelled. */
+  category: "open" | "done" | "cancelled"
+  order: number
+  /** Hidden statuses stay on existing tasks but are not offered in pickers. */
+  hidden?: boolean
+  /** True for the six default statuses shipped with Nexora. */
+  builtin?: boolean
+}
+
+/** User-configurable priority definition. */
+export interface PriorityDefinition {
+  id: string
+  label: string
+  order: number
+  hidden?: boolean
+  builtin?: boolean
+}
 export type Repeat = "daily" | "weekly"
 export type Horizon = "daily" | "weekly" | "monthly" | "quarterly" | "yearly" | "long_term"
 export type ProjectStatus = "active" | "on_hold" | "completed" | "cancelled"
@@ -197,6 +226,14 @@ export interface ActiveTimer {
 }
 
 export interface Settings {
+  /** Legacy rename map; still applied when taskStatuses is absent. */
+  taskStatusLabels?: Partial<Record<string, string>>
+  taskPriorityLabels?: Partial<Record<string, string>>
+  /** Full status catalog (built-in + custom). When set, drives pickers and Kanban. */
+  taskStatuses?: StatusDefinition[]
+  /** Full priority catalog (built-in + custom). */
+  taskPriorities?: PriorityDefinition[]
+  notificationsEnabled?: boolean
   initialized: boolean
   theme: ThemeMode
   accent: string
@@ -204,9 +241,6 @@ export interface Settings {
   weekStartsOn: 0 | 1
   widgetOrder: string[]
   hiddenWidgets: string[]
-  notificationsEnabled: boolean
-  taskStatusLabels?: Partial<Record<TaskStatus, string>>
-  taskPriorityLabels?: Partial<Record<Priority, string>>
 }
 
 export interface Persisted {
