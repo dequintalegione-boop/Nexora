@@ -135,3 +135,16 @@ test("skipping an occurrence is carried forward to the next task in the series",
   assert.equal(next?.occurrenceDate, "2026-01-07")
   assert.deepEqual(next?.skippedOccurrences, ["2025-12-29"])
 })
+
+test("weekly weekday recurrence shifts scheduled date and deadline by the actual day offset", () => {
+  const first = task("series", {
+    occurrenceDate: "2026-01-05",
+    scheduledDate: "2026-01-05",
+    dueDate: "2026-01-06",
+    recurrenceRule: { frequency: "weekly", interval: 1, weekdays: [1, 3, 5] },
+  })
+  const next = buildNextTaskOccurrence(first, "2026-01-05T12:00:00.000Z")
+  assert.equal(next?.occurrenceDate, "2026-01-07")
+  assert.equal(next?.scheduledDate, "2026-01-07")
+  assert.equal(next?.dueDate, "2026-01-08")
+})
