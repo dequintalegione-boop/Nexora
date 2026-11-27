@@ -1,4 +1,4 @@
-import type { Task, TaskStatus, Priority } from "./types"
+import type { Task } from "./types"
 
 export type TaskFilterField =
   | "title"
