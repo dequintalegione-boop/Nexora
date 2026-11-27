@@ -50,7 +50,7 @@
 
 ## Автоматические тесты
 
-Покрыты: TaskRepository / TaskService / TaskEvents (repository ID validation, post-commit events, dedupe, nested dispatch, handler isolation, CRUD lifecycle, relation integrity), шаблоны, автоматизации (AND/OR, `task.due`, `task.due_soon`), миграции схемы, каталог статусов (в т.ч. select options и fallback), напоминания, фильтры, Kanban, календарь, быстрый ввод (weekdays/estimate/project/status/custom status id), повторения, Pomodoro (длительности и последовательность циклов), корректировка time sessions, JSON-бэкап (новый и старый формат, round-trip UI и данных, отказ на некорректном/дублированном/будущем формате).
+Покрыты: TaskRepository / TaskService / TaskEvents (repository ID validation, post-commit events, dedupe, nested dispatch, handler isolation, CRUD lifecycle, relation integrity, timer/Pomodoro event contract), шаблоны, автоматизации (AND/OR, `task.due`, `task.due_soon`), миграции схемы, каталог статусов (в т.ч. select options и fallback), напоминания, фильтры, Kanban, календарь, быстрый ввод (weekdays/estimate/project/status/custom status id), повторения, Pomodoro (длительности и последовательность циклов), корректировка time sessions, JSON-бэкап (новый и старый формат, round-trip UI и данных, отказ на некорректном/дублированном/будущем формате).
 
 CI: unit-тесты, TypeScript typecheck, production build.
 
@@ -62,7 +62,8 @@ CI: unit-тесты, TypeScript typecheck, production build.
   - `TaskEvents` — типизированная локальная шина с eventId, occurredAt, entityId, before/after, source, correlationId и безопасными метаданными; события CRUD публикуются после repository commit;
   - дедупликация по eventId (ограниченное окно 5 000 событий), очередь вложенных публикаций и изоляция ошибок подписчиков;
   - создание, смена статуса, completion и skip повторения сохраняют текущую атомарную логику автоматизаций/повторений в store и публикуют соответствующие события после записи.
-  - **Ограничение:** шина пока внутрипроцессная и не является durable outbox; типы для time/Pomodoro/reminders объявлены, но соответствующие потоки ещё не переведены на публикацию; автоматизации пока не подписаны на доменную шину. Полное вынесение всей бизнес-логики в сервис и событийная оркестрация остаются следующей итерацией.
+  - Таймер/Pomodoro публикуют `time.started/paused/resumed/stopped`, `time.session.corrected` и `pomodoro.started/completed/interrupted`; у таймера и Pomodoro есть стабильные ID для корреляции фаз, новые поля optional для совместимости со старыми активными таймерами.
+  - **Ограничение:** шина пока внутрипроцессная и не является durable outbox; напоминания ещё не публикуют события; автоматизации пока не подписаны на доменную шину. Полное вынесение всей бизнес-логики в сервис и событийная оркестрация остаются следующей итерацией.
 - Автоматизации: нет глубокого визуального редактора дерева условий и расширенного поиска по журналу.
 - Повторения пока не реализуют весь RFC 5545: не поддержаны все селекторы (например, BYSETPOS), DTSTART с временем и полный timezone/DST-контракт. Виртуальные экземпляры пока используются в календаре; редактирование/перенос отдельного виртуального экземпляра и отображение виртуальных повторений в списке, таблице и Kanban ещё предстоят.
 - Pomodoro пока без звукового сигнала/уведомления на границе этапа; фоновое завершение этапов при закрытом приложении не гарантируется.
