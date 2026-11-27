@@ -1,5 +1,5 @@
 import type { RecurrenceRule, Task } from "./types"
-import { getNextRecurrenceOccurrence } from "./recurrence.ts"
+import { getNextRecurrenceOccurrence, getRecurrenceOccurrences } from "./recurrence.ts"
 
 export interface DependencyState {
   blockedBy: Task[]
@@ -168,4 +168,75 @@ export function updateRecurrenceSeriesTasks(
   })
 
   return { tasks: nextTasks, updatedCount }
+}
+
+
+/** Create a persisted, independently editable copy of one virtual series occurrence. */
+export function buildMaterializedTaskOccurrence(
+  occurrence: Task,
+  id: string,
+  now: string,
+): Task | null {
+  if (!occurrence.recurrenceParentId || !occurrence.occurrenceDate || !id.trim()) return null
+  return {
+    ...occurrence,
+    id,
+    createdAt: now,
+    updatedAt: now,
+    archived: false,
+    archivedAt: undefined,
+    deletedAt: undefined,
+    completedAt: undefined,
+    repeat: undefined,
+    recurrenceRule: undefined,
+    skippedOccurrences: undefined,
+    history: [
+      ...(occurrence.history ?? []),
+      { at: now, change: "Экземпляр повторения отделён от серии" },
+    ].slice(-100),
+  }
+}
+
+/** Exclude a single virtual date without cancelling or editing the recurrence series. */
+export function skipRecurrenceOccurrenceTask(
+  tasks: Task[],
+  seriesId: string,
+  occurrenceDate: string,
+  now: string,
+): { tasks: Task[]; updatedCount: number } {
+  const root = tasks.find((task) => task.id === seriesId)
+  if (!root || root.deletedAt || root.archived) return { tasks, updatedCount: 0 }
+  const rule = root.recurrenceRule ?? (
+    root.repeat ? { frequency: root.repeat, interval: 1 } : undefined
+  )
+  const startDate = root.recurrenceStartDate ?? root.occurrenceDate ?? root.scheduledDate ?? root.dueDate ?? root.startAt?.slice(0, 10)
+  if (!rule || !startDate) return { tasks, updatedCount: 0 }
+
+  const exists = getRecurrenceOccurrences(
+    rule,
+    startDate,
+    occurrenceDate,
+    occurrenceDate,
+    root.skippedOccurrences ?? [],
+    1,
+  ).some((item) => item.date === occurrenceDate)
+  if (!exists) return { tasks, updatedCount: 0 }
+
+  const skippedOccurrences = [...new Set([...(root.skippedOccurrences ?? []), occurrenceDate])].sort()
+  if (skippedOccurrences.length === (root.skippedOccurrences ?? []).length) {
+    return { tasks, updatedCount: 0 }
+  }
+  const nextRoot: Task = {
+    ...root,
+    skippedOccurrences,
+    updatedAt: now,
+    history: [
+      ...(root.history ?? []),
+      { at: now, change: `Повторение ${occurrenceDate} пропущено отдельно` },
+    ].slice(-100),
+  }
+  return {
+    tasks: tasks.map((task) => task.id === seriesId ? nextRoot : task),
+    updatedCount: 1,
+  }
 }
