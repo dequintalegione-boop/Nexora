@@ -1,10 +1,16 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
+import type { ChangeEvent } from "react"
 import { useNexora } from "@/lib/nexora/store"
-import { CURRENT_SCHEMA_VERSION } from "@/lib/nexora/migrate"
-import type { ThemeMode, TaskStatus, Priority } from "@/lib/nexora/types"
+import { useUI } from "@/lib/nexora/ui-store"
 import {
-  getActiveTaskStatuses,
-  getActiveTaskPriorities,
+  createNexoraBackup,
+  MAX_BACKUP_FILE_BYTES,
+  parseNexoraBackup,
+  serializeNexoraBackup,
+} from "@/lib/nexora/backup"
+import type { ParsedNexoraBackup } from "@/lib/nexora/backup"
+import type { ThemeMode, TaskStatus, Priority, Persisted } from "@/lib/nexora/types"
+import {
   getTaskStatusDefinitions,
   getTaskPriorityDefinitions,
   defaultTaskStatuses,
@@ -16,7 +22,6 @@ import type { StatusDefinition, PriorityDefinition } from "@/lib/nexora/types"
 import { Button, Card, Input, Select } from "./ui"
 import { AutomationSettingsCard } from "./automation-settings"
 
-
 function moveItem<T extends { order: number }>(items: T[], index: number, dir: -1 | 1): T[] {
   const next = index + dir
   if (next < 0 || next >= items.length) return items
@@ -25,6 +30,19 @@ function moveItem<T extends { order: number }>(items: T[], index: number, dir: -
   copy[index] = copy[next]
   copy[next] = tmp
   return copy.map((item, order) => ({ ...item, order }))
+}
+
+function downloadJsonBackup(backup: ReturnType<typeof createNexoraBackup>, prefix: string): void {
+  const blob = new Blob([serializeNexoraBackup(backup)], { type: "application/json;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement("a")
+  anchor.href = url
+  anchor.download = prefix + "-" + new Date().toISOString().slice(0, 10) + ".json"
+  anchor.style.display = "none"
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 function StatusCatalogEditor() {
@@ -57,7 +75,7 @@ function StatusCatalogEditor() {
   const addCustom = () => {
     const label = newLabel.trim()
     if (!label) return
-    const id = `custom_${label.toLowerCase().replace(/[^a-z0-9а-яё]+/gi, "_").replace(/^_|_$/g, "") || "status"}_${Date.now().toString(36).slice(-4)}`
+    const id = "custom_" + (label.toLowerCase().replace(/[^a-z0-9а-яё]+/gi, "_").replace(/^_|_$/g, "") || "status") + "_" + Date.now().toString(36).slice(-4)
     commit([
       ...statuses,
       { id, label, category: newCategory, order: statuses.length, builtin: false },
@@ -138,11 +156,7 @@ function StatusCatalogEditor() {
         <Button size="sm" onClick={addCustom} disabled={!newLabel.trim()}>
           Добавить
         </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => commit(defaultTaskStatuses())}
-        >
+        <Button size="sm" variant="secondary" onClick={() => commit(defaultTaskStatuses())}>
           Сбросить статусы
         </Button>
       </div>
@@ -179,7 +193,7 @@ function PriorityCatalogEditor() {
   const addCustom = () => {
     const label = newLabel.trim()
     if (!label) return
-    const id = `custom_${label.toLowerCase().replace(/[^a-z0-9а-яё]+/gi, "_").replace(/^_|_$/g, "") || "priority"}_${Date.now().toString(36).slice(-4)}`
+    const id = "custom_" + (label.toLowerCase().replace(/[^a-z0-9а-яё]+/gi, "_").replace(/^_|_$/g, "") || "priority") + "_" + Date.now().toString(36).slice(-4)
     commit([...priorities, { id, label, order: priorities.length, builtin: false }])
     setNewLabel("")
   }
@@ -243,37 +257,80 @@ function PriorityCatalogEditor() {
   )
 }
 
-
 export function SettingsPage() {
   const settings = useNexora((s) => s.settings)
   const updateSettings = useNexora((s) => s.updateSettings)
   const loadSeed = useNexora((s) => s.loadSeed)
+  const backupInputRef = useRef<HTMLInputElement | null>(null)
+  const [importPreview, setImportPreview] = useState<ParsedNexoraBackup | null>(null)
+  const [importError, setImportError] = useState("")
+  const [importNotice, setImportNotice] = useState("")
 
   const exportBackup = () => {
     const data = useNexora.getState()
-    const backup = {
-      schema: CURRENT_SCHEMA_VERSION,
-      exportedAt: new Date().toISOString(),
-      directions: data.directions,
-      projects: data.projects,
-      tasks: data.tasks,
-      habits: data.habits,
-      habitLogs: data.habitLogs,
-      entries: data.entries,
-      goals: data.goals,
-      sessions: data.sessions,
-      activeTimer: data.activeTimer,
-      settings: data.settings,
-      automationRules: data.automationRules ?? [],
-      automationRuns: data.automationRuns ?? [],
+    const ui = useUI.getState()
+    const backup = createNexoraBackup(data, {
+      savedTaskViews: ui.savedTaskViews,
+      taskTableColumns: ui.taskTableColumns,
+      kanbanGroupBy: ui.kanbanGroupBy,
+      taskTemplates: ui.taskTemplates,
+    })
+    downloadJsonBackup(backup, "nexora-backup")
+    setImportNotice("JSON-бэкап создан. Храните файл отдельно от устройства.")
+    setImportError("")
+  }
+
+  const selectBackupFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (!file) return
+
+    setImportNotice("")
+    setImportError("")
+    setImportPreview(null)
+
+    if (file.size > MAX_BACKUP_FILE_BYTES) {
+      setImportError("Файл слишком большой. Максимальный размер — 25 МБ.")
+      return
     }
-    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `nexora-backup-${new Date().toISOString().slice(0, 10)}.json`
-    a.click()
-    URL.revokeObjectURL(url)
+
+    try {
+      const parsed = parseNexoraBackup(await file.text())
+      setImportPreview(parsed)
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "Не удалось проверить резервную копию.")
+    }
+  }
+
+  const restoreBackup = () => {
+    if (!importPreview) return
+    const confirmed = window.confirm(
+      "Восстановление полностью заменит текущие данные Nexora. Перед заменой будет скачан отдельный JSON-бэкап текущего профиля. Продолжить?",
+    )
+    if (!confirmed) return
+
+    try {
+      const currentData: Persisted = useNexora.getState()
+      const currentUI = useUI.getState()
+      const safetyBackup = createNexoraBackup(currentData, {
+        savedTaskViews: currentUI.savedTaskViews,
+        taskTableColumns: currentUI.taskTableColumns,
+        kanbanGroupBy: currentUI.kanbanGroupBy,
+        taskTemplates: currentUI.taskTemplates,
+      })
+      downloadJsonBackup(safetyBackup, "nexora-pre-restore")
+
+      useNexora.getState().replaceAll(importPreview.data)
+      if (importPreview.ui) {
+        useUI.setState(importPreview.ui)
+      }
+
+      setImportPreview(null)
+      setImportNotice("Данные восстановлены. Предыдущий профиль сохранён в скачанном файле nexora-pre-restore.")
+      setImportError("")
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "Не удалось восстановить резервную копию.")
+    }
   }
 
   return (
@@ -383,15 +440,73 @@ export function SettingsPage() {
       </Card>
 
       <Card className="p-4 space-y-3">
-        <h2 className="font-medium">Данные</h2>
+        <div>
+          <h2 className="font-medium">Данные</h2>
+          <p className="text-xs text-muted">
+            Бэкап содержит коллекции Nexora, таймер, настройки, правила автоматизации, сохранённые представления,
+            выбранные колонки, группировку Kanban и шаблоны задач.
+          </p>
+        </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={exportBackup}>
-            Экспорт бэкапа
+            Экспорт JSON-бэкапа
+          </Button>
+          <Button variant="secondary" onClick={() => backupInputRef.current?.click()}>
+            Проверить и восстановить из файла
           </Button>
           <Button variant="secondary" onClick={() => loadSeed(true)}>
             Загрузить демо-данные
           </Button>
         </div>
+        <input
+          ref={backupInputRef}
+          type="file"
+          accept=".json,application/json"
+          className="sr-only"
+          onChange={selectBackupFile}
+        />
+        {importError && <p role="alert" className="text-sm text-red-400">{importError}</p>}
+        {importNotice && <p role="status" className="text-sm text-emerald-400">{importNotice}</p>}
+        {importPreview && (
+          <div className="space-y-3 rounded-lg border border-border p-3">
+            <div>
+              <h3 className="text-sm font-medium">Предпросмотр резервной копии</h3>
+              <p className="mt-1 text-xs text-muted">
+                {importPreview.isLegacy ? "Старый формат JSON" : "Формат Nexora v1"} ·
+                {importPreview.exportedAt ? " экспортировано " + new Date(importPreview.exportedAt).toLocaleString() : " дата экспорта не указана"}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>Задачи: <strong>{importPreview.data.tasks.length}</strong></div>
+              <div>Проекты: <strong>{importPreview.data.projects.length}</strong></div>
+              <div>Направления: <strong>{importPreview.data.directions.length}</strong></div>
+              <div>Привычки: <strong>{importPreview.data.habits.length}</strong></div>
+              <div>Записи дневника: <strong>{importPreview.data.entries.length}</strong></div>
+              <div>Цели: <strong>{importPreview.data.goals.length}</strong></div>
+              <div>Сессии: <strong>{importPreview.data.sessions.length}</strong></div>
+              <div>Правила автоматизации: <strong>{importPreview.data.automationRules?.length ?? 0}</strong></div>
+            </div>
+            {importPreview.ui && (
+              <p className="text-xs text-muted">
+                Также восстановятся {importPreview.ui.savedTaskViews?.length ?? 0} представлений задач и{" "}
+                {importPreview.ui.taskTemplates?.length ?? 0} шаблонов.
+              </p>
+            )}
+            {importPreview.warnings.length > 0 && (
+              <ul className="list-disc space-y-1 pl-5 text-xs text-amber-400">
+                {importPreview.warnings.map((warning, index) => <li key={index}>{warning}</li>)}
+              </ul>
+            )}
+            <p className="text-xs text-muted">
+              Восстановление заменит текущий профиль. Перед заменой будет автоматически скачана резервная копия
+              текущего состояния.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={restoreBackup}>Скачать страховочную копию и восстановить</Button>
+              <Button variant="ghost" onClick={() => setImportPreview(null)}>Отмена</Button>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   )
