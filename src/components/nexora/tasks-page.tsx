@@ -388,9 +388,11 @@ export function TasksPage() {
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => {
                   if (!draggedTaskId) return
-                  const patch = getKanbanDropPatch(draggedTaskId, column.id, kanbanGroupBy, tasks)
-                  if (patch.status) setTaskStatus(draggedTaskId, patch.status as TaskStatus)
-                  else if (Object.keys(patch).length) updateTask(draggedTaskId, patch)
+                  const patch = getKanbanDropPatch(kanbanGroupBy, column.id)
+                  if (patch) {
+                    if (patch.status) setTaskStatus(draggedTaskId, patch.status as TaskStatus)
+                    else if (Object.keys(patch).length) updateTask(draggedTaskId, patch)
+                  }
                   setDraggedTaskId(null)
                 }}
               >
@@ -443,10 +445,16 @@ export function TasksPage() {
                         </Select>
                       ),
                       priority: <Badge priority={task.priority}>{priorityLabels[task.priority]}</Badge>,
-                      due: task.dueDate || "—",
-                      scheduled: task.scheduledDate || "—",
-                      project: projects.find((p) => p.id === task.projectId)?.title || "—",
+                      dueDate: task.dueDate || "—",
+                      scheduledDate: task.scheduledDate || "—",
+                      projects: (task.projectIds?.length ? task.projectIds : task.projectId ? [task.projectId] : [])
+                        .map((id) => projects.find((project) => project.id === id)?.title)
+                        .filter((name): name is string => Boolean(name))
+                        .join(", ") || "—",
+                      tags: task.tags?.join(", ") || "—",
                       estimate: task.estimatedMinutes != null ? `${task.estimatedMinutes}м` : "—",
+                      actual: task.actualMinutes != null ? `${task.actualMinutes}м` : "—",
+                      updatedAt: new Date(task.updatedAt).toLocaleString(),
                     }
                     return <td key={col} className="p-2">{cell[col]}</td>
                   })}

@@ -110,6 +110,10 @@ export interface Task {
   recurrenceRule?: RecurrenceRule
   recurrenceParentId?: ID
   occurrenceDate?: string
+  occurrenceNumber?: number
+  recurrenceStartDate?: string
+  recurrenceStartScheduledDate?: string
+  recurrenceStartDueDate?: string
   skippedOccurrences?: string[]
   tags?: string[]
   contexts?: string[]
@@ -138,6 +142,7 @@ export interface Project {
   priority: Priority
   directionId?: string
   dueDate?: string
+  progress?: number
   archived?: boolean
   tags?: string[]
 }
@@ -154,6 +159,8 @@ export interface Habit {
   active: boolean
   icon?: string
   directionId?: string
+  startDate?: string
+  endDate?: string
   archived?: boolean
 }
 
@@ -172,6 +179,7 @@ export interface Reflection {
   wentWell?: string
   improve?: string
   gratitude?: string
+  wins?: string
 }
 
 export interface DailyEntry {
@@ -184,6 +192,7 @@ export interface DailyEntry {
   notes?: string
   wins?: string
   lessons?: string
+  freeThoughts?: string
   reflection?: Reflection
   focus?: string
 }
@@ -196,6 +205,7 @@ export interface Goal {
   horizon: Horizon
   status: GoalStatus
   progress: number
+  archived?: boolean
   description?: string
   targetDate?: string
   projectIds?: ID[]

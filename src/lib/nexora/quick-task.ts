@@ -183,7 +183,7 @@ export function parseQuickTaskInput(input: string, today: string): QuickTaskDraf
   let projectTitle: string | undefined
   let estimatedMinutes: number | undefined
 
-  remaining = remaining.replace(/(^|\s)!([\p{L}]+)(?=\s|$)/giu, (match, prefix: string, token: string) => {
+  remaining = remaining.replace(/(^|\s)!([\p{L}]+)(?=\s|$)/giu, (_match, prefix: string, token: string) => {
     const parsed = PRIORITY_TOKENS[token.toLocaleLowerCase("ru-RU")]
     if (!parsed) return match
     priority = parsed

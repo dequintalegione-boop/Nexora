@@ -1,19 +1,16 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import { STATUS_LABEL, WIDGETS, isDoneStatus } from "./copy"
-import { addDays, isoDate } from "./dates"
 import { buildSeed } from "./seed"
 import { getTasksDueForAutomation, getTasksDueSoonForAutomation, runTaskAutomations } from "./automations"
 import { CURRENT_SCHEMA_VERSION, migratePersistedData } from "./migrate"
 import type { TaskAutomationRule } from "./automations"
 import { buildNextTaskOccurrence, canAddTaskDependency, canSetTaskParent, updateRecurrenceSeriesTasks } from "./task-logic"
 import type {
-  ActiveTimer,
   DailyEntry,
   Direction,
   Goal,
   Habit,
-  HabitLog,
   Persisted,
   Project,
   SessionKind,

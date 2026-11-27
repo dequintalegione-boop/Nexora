@@ -1,6 +1,6 @@
 import type { Persisted } from "./types"
 import { defaultSettings } from "./store"
-import { isoDate, addDays } from "./dates"
+import { isoDate } from "./dates"
 
 function id(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}`
@@ -37,7 +37,7 @@ export function buildSeed(): Persisted {
     entries: [],
     goals: [
       { id: id("goal"), createdAt: today, updatedAt: today, title: "Запустить Nexora v1", horizon: "monthly", status: "active", progress: 40 },
-      { id: id("goal"), createdAt: today, updatedAt: today, title: "Бегать 5 км", horizon: "quarterly", status: "active" },
+      { id: id("goal"), createdAt: today, updatedAt: today, title: "Бегать 5 км", horizon: "quarterly", status: "active", progress: 0 },
     ],
     sessions: [],
     activeTimer: null,

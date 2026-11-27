@@ -9,7 +9,6 @@ export function HabitsPage() {
   const habits = useNexora((s) => s.habits)
   const habitLogs = useNexora((s) => s.habitLogs)
   const addHabit = useNexora((s) => s.addHabit)
-  const updateHabit = useNexora((s) => s.updateHabit)
   const setHabitValue = useNexora((s) => s.setHabitValue)
   const skipHabit = useNexora((s) => s.skipHabit)
   const clearHabitLog = useNexora((s) => s.clearHabitLog)
