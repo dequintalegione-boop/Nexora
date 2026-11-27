@@ -1,6 +1,7 @@
 import { useEffect } from "react"
 import { useNexora } from "@/lib/nexora/store"
 import { getDueTaskReminders } from "@/lib/nexora/reminders"
+import { replayPendingTaskEvents } from "@/lib/nexora/task-events"
 
 /**
  * Local scheduler that runs while Nexora is open:
@@ -17,6 +18,13 @@ export function ReminderScheduler() {
     if (typeof window === "undefined") return
 
     const tick = () => {
+      // Retry persisted domain events while the application is open.
+      try {
+        replayPendingTaskEvents()
+      } catch (error) {
+        console.error("Nexora pending domain event replay failed:", error)
+      }
+
       // Always evaluate due-date automations while the app is open
       try {
         useNexora.getState().runDueAutomations()

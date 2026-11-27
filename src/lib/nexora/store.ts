@@ -4,7 +4,7 @@ import { STATUS_LABEL, WIDGETS, isDoneStatus } from "./copy"
 import { buildSeed } from "./seed"
 import { DEFAULT_POMODORO_SETTINGS, getNextPomodoroPhase, getPomodoroPhaseDurationMs, normalizePomodoroSettings } from "./pomodoro"
 import { correctTimeSession } from "./time-tracking"
-import { createTaskDomainEvent, taskEventBus } from "./task-events"
+import { createTaskDomainEvent, replayPendingTaskEvents, taskEventBus } from "./task-events"
 import type { CreateTaskDomainEventInput } from "./task-events"
 import { createTaskRepository } from "./task-repository"
 import { createTaskService } from "./task-service"
@@ -1312,3 +1312,4 @@ const taskAutomationEventAdapter = new TaskAutomationEventAdapter(taskEventBus, 
   },
 })
 taskAutomationEventAdapter.start()
+replayPendingTaskEvents()
