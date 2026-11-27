@@ -116,7 +116,7 @@ export function parseQuickTaskInput(input: string, today: string): QuickTaskDraf
     return prefix
   })
 
-  remaining = remaining.replace(/(^|\\s)через\\s+(\\d{1,2})\\s+(месяц|месяца|месяцев)(?=\\s|$)/giu, (match, prefix: string, amountText: string) => {
+  remaining = remaining.replace(/(^|\s)через\s+(\d{1,2})\s+(месяц|месяца|месяцев)(?=\s|$)/giu, (match, prefix: string, amountText: string) => {
     const amount = Number(amountText)
     if (amount < 1 || amount > 24) return match
     scheduledDate = addCalendarMonths(today, amount)
