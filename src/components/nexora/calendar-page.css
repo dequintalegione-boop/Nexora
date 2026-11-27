@@ -1,0 +1,77 @@
+.nexora-calendar-card {
+  background: linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.008)), #101416;
+  border-color: rgba(255,255,255,.09);
+}
+
+.nexora-calendar-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-color: rgba(255,255,255,.16) transparent;
+}
+
+.nexora-calendar-all-day-label,
+.nexora-calendar-all-day {
+  background: rgba(255,255,255,.018);
+}
+
+.nexora-calendar-event {
+  min-width: 0;
+  min-height: 25px;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  transition:
+    filter 140ms ease,
+    box-shadow 140ms ease,
+    opacity 140ms ease;
+}
+
+.nexora-calendar-event:active {
+  cursor: grabbing;
+}
+
+.nexora-calendar-event:focus-visible {
+  outline: 2px solid rgba(125,211,252,.9);
+  outline-offset: 1px;
+}
+
+.nexora-calendar-resize-handle {
+  touch-action: none;
+  opacity: .24;
+  transition: opacity 140ms ease, background 140ms ease;
+}
+
+.nexora-calendar-event:hover .nexora-calendar-resize-handle,
+.nexora-calendar-resize-handle:active {
+  opacity: .9;
+}
+
+.nexora-calendar-resize-handle:hover {
+  background: rgba(255,255,255,.12);
+}
+
+.nexora-calendar-all-day .nexora-calendar-event {
+  min-height: 25px;
+}
+
+.nexora-calendar-composer {
+  border-color: rgba(255,255,255,.09);
+  background: linear-gradient(135deg, rgba(255,255,255,.035), rgba(255,255,255,.012));
+}
+
+@media (max-width: 720px) {
+  .nexora-calendar-card .nexora-calendar-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .nexora-calendar-composer {
+    padding: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nexora-calendar-event,
+  .nexora-calendar-resize-handle {
+    transition: none;
+  }
+}

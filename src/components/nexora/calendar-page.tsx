@@ -1,9 +1,22 @@
-import { useMemo, useState, type DragEvent } from "react"
+import { useEffect, useMemo, useState, type DragEvent, type FormEvent, type PointerEvent } from "react"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
-import { ChevronLeft, ChevronRight } from "lucide-react"
-import { addDays, isoDate, monthGrid, parseISODate, startOfWeek } from "@/lib/nexora/dates"
-import { getCalendarDayDropPatch, getCalendarDropPatch, getCalendarTaskTime } from "@/lib/nexora/calendar"
+import { ChevronLeft, ChevronRight, Clock3 } from "lucide-react"
+import {
+  addDays,
+  isoDate,
+  monthGrid,
+  parseISODate,
+  startOfWeek,
+} from "@/lib/nexora/dates"
+import {
+  getCalendarCreatePatch,
+  getCalendarDayDropPatch,
+  getCalendarDropPatch,
+  getCalendarResizePatch,
+  getCalendarTaskTime,
+  layoutCalendarEvents,
+} from "@/lib/nexora/calendar"
 import { expandTaskOccurrences } from "@/lib/nexora/recurrence"
 import { isDoneStatus, getTaskPriorityLabels } from "@/lib/nexora/copy"
 import { useNexora } from "@/lib/nexora/store"
@@ -11,49 +24,60 @@ import { useUI } from "@/lib/nexora/ui-store"
 import type { Task } from "@/lib/nexora/types"
 import { cn } from "@/lib/cn"
 import { Card, PageHeader } from "./ui"
+import "./calendar-page.css"
 
-/** TaskNotes / FullCalendar-inspired view modes */
-type CalendarView = "month" | "week" | "day" | "list"
+/** Calendar views supported by the internal Nexora task calendar. */
+type CalendarView = "year" | "month" | "week" | "days" | "day" | "list"
+type CalendarTask = Task & { virtualOccurrence?: boolean; recurrenceSeriesId?: string }
+
+type TaskMinutes = { start: number; end: number }
+type ResizeDraft = {
+  taskId: string
+  day: string
+  pointerId: number
+  startY: number
+  start: number
+  end: number
+  edge: "start" | "end"
+  previewStart: number
+  previewEnd: number
+}
 
 const HEADS = {
   1: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
   0: ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"],
 } as const
 
-/** Hourly slots from 06:00 to 22:00 (FullCalendar-style timegrid) */
-const SLOT_START = 6 * 60
-const SLOT_END = 22 * 60
 const SLOT_STEP = 30
-const TIME_SLOTS = Array.from(
-  { length: (SLOT_END - SLOT_START) / SLOT_STEP },
-  (_, i) => SLOT_START + i * SLOT_STEP,
-)
+const ROW_HEIGHT = 44
 const LIST_DAYS = 14
-
-type CalendarTask = Task & { virtualOccurrence?: boolean; recurrenceSeriesId?: string }
-
 const PRIORITY_COLOR: Record<string, string> = {
-  none: "bg-white/15 border-white/20 text-white/90",
-  low: "bg-sky-500/25 border-sky-400/40 text-sky-100",
-  medium: "bg-amber-500/25 border-amber-400/40 text-amber-50",
-  high: "bg-orange-500/30 border-orange-400/50 text-orange-50",
-  critical: "bg-rose-500/35 border-rose-400/50 text-rose-50",
+  none: "bg-slate-500/20 border-slate-300/35 text-slate-100",
+  low: "bg-sky-500/25 border-sky-300/55 text-sky-100",
+  medium: "bg-amber-500/25 border-amber-300/55 text-amber-50",
+  high: "bg-orange-500/30 border-orange-300/60 text-orange-50",
+  critical: "bg-rose-500/30 border-rose-300/60 text-rose-50",
 }
 
 function localTimeLabel(minutes: number) {
-  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`
+  const normalized = Math.max(0, Math.min(24 * 60, minutes))
+  return `${String(Math.floor(normalized / 60)).padStart(2, "0")}:${String(normalized % 60).padStart(2, "0")}`
 }
 
-function taskMinutes(task: Task): { start: number; end: number } | null {
+function taskMinutes(task: Task): TaskMinutes | null {
   if (!task.startAt || task.allDay) return null
   const start = new Date(task.startAt)
   if (Number.isNaN(start.getTime())) return null
+
   const startMin = start.getHours() * 60 + start.getMinutes()
   let endMin = startMin + 60
   if (task.endAt) {
     const end = new Date(task.endAt)
     if (!Number.isNaN(end.getTime())) {
-      endMin = Math.max(startMin + 15, end.getHours() * 60 + end.getMinutes())
+      endMin = end.toDateString() === start.toDateString()
+        ? end.getHours() * 60 + end.getMinutes()
+        : 24 * 60
+      endMin = Math.max(startMin + 15, endMin)
     }
   }
   return { start: startMin, end: endMin }
@@ -64,15 +88,35 @@ function isTaskOnDay(task: Task, day: string) {
   return task.scheduledDate === day || task.dueDate === day || task.startAt?.slice(0, 10) === day
 }
 
+function formatRange(start: number, end: number) {
+  return `${localTimeLabel(start)} – ${localTimeLabel(end)}`
+}
+
+function monthName(year: number, month: number) {
+  return format(new Date(year, month, 1), "LLLL", { locale: ru })
+}
+
 export function CalendarPage() {
-  const today = isoDate()
+  const [now, setNow] = useState(() => new Date())
+  const today = isoDate(now)
   const initial = parseISODate(today)
   const [view, setView] = useState<CalendarView>("week")
   const [cursor, setCursor] = useState({ year: initial.getFullYear(), month: initial.getMonth() })
   const [selected, setSelected] = useState(today)
   const [draft, setDraft] = useState("")
+  const [selectedSlot, setSelectedSlot] = useState<number | null>(null)
   const [showDue, setShowDue] = useState(true)
   const [showScheduled, setShowScheduled] = useState(true)
+  const [showWeekends, setShowWeekends] = useState(true)
+  const [dayCount, setDayCount] = useState(3)
+  const [slotStartHour, setSlotStartHour] = useState(6)
+  const [slotEndHour, setSlotEndHour] = useState(22)
+  const [resizeDraft, setResizeDraft] = useState<ResizeDraft | null>(null)
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   const weekStartsOn = useNexora((s) => s.settings.weekStartsOn)
   const settings = useNexora((s) => s.settings)
@@ -87,6 +131,16 @@ export function CalendarPage() {
     return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
   }, [selected, weekStartsOn])
 
+  const visibleWeekDays = useMemo(
+    () => showWeekends ? weekDays : weekDays.filter((day) => ![0, 6].includes(parseISODate(day).getDay())),
+    [showWeekends, weekDays],
+  )
+
+  const customDays = useMemo(
+    () => Array.from({ length: dayCount }, (_, i) => addDays(selected, i)),
+    [dayCount, selected],
+  )
+
   const listDays = useMemo(
     () => Array.from({ length: LIST_DAYS }, (_, i) => addDays(selected, i)),
     [selected],
@@ -94,18 +148,36 @@ export function CalendarPage() {
 
   const cells = useMemo(
     () => monthGrid(cursor.year, cursor.month, weekStartsOn),
-    [cursor, weekStartsOn],
+    [cursor, monthGrid, weekStartsOn],
   )
 
-  const recurrenceRange = view === "month"
-    ? cells.filter((day): day is string => Boolean(day))
-    : view === "week"
-      ? weekDays
-      : view === "day"
-        ? [selected]
-        : listDays
-  const recurrenceRangeStart = recurrenceRange[0] ?? selected
-  const recurrenceRangeEnd = recurrenceRange[recurrenceRange.length - 1] ?? selected
+  const yearCells = useMemo(
+    () => Array.from({ length: 12 }, (_, month) => ({
+      month,
+      days: monthGrid(cursor.year, month, weekStartsOn),
+    })),
+    [cursor.year, weekStartsOn],
+  )
+
+  const recurrenceRange = useMemo(() => {
+    if (view === "year") {
+      return [
+        isoDate(new Date(cursor.year, 0, 1)),
+        isoDate(new Date(cursor.year, 11, 31)),
+      ]
+    }
+    if (view === "month") {
+      const monthDays = cells.filter((day): day is string => Boolean(day))
+      return [monthDays[0] ?? selected, monthDays[monthDays.length - 1] ?? selected]
+    }
+    if (view === "week") {
+      const days = visibleWeekDays
+      return [days[0] ?? selected, days[days.length - 1] ?? selected]
+    }
+    if (view === "days") return [customDays[0] ?? selected, customDays[customDays.length - 1] ?? selected]
+    if (view === "day") return [selected, selected]
+    return [listDays[0] ?? selected, listDays[listDays.length - 1] ?? selected]
+  }, [view, cursor.year, cells, selected, visibleWeekDays, customDays, listDays])
 
   const visibleTasks = useMemo<CalendarTask[]>(() => {
     const activeSeriesIds = new Set(
@@ -125,14 +197,14 @@ export function CalendarPage() {
       !task.repeat &&
       (!task.recurrenceParentId || !activeSeriesIds.has(task.recurrenceParentId))
     )
-    const occurrences = expandTaskOccurrences(tasks, recurrenceRangeStart, recurrenceRangeEnd)
+    const occurrences = expandTaskOccurrences(tasks, recurrenceRange[0], recurrenceRange[1])
       .map((occurrence) => ({
         ...occurrence.task,
         virtualOccurrence: occurrence.isVirtual,
         recurrenceSeriesId: occurrence.seriesId,
       }))
     return [...ordinaryTasks, ...occurrences]
-  }, [tasks, recurrenceRangeStart, recurrenceRangeEnd])
+  }, [tasks, recurrenceRange])
 
   const tasksForDay = (day: string) =>
     visibleTasks.filter((task) => {
@@ -146,116 +218,224 @@ export function CalendarPage() {
       return showDue || showScheduled
     })
 
-  const title = useMemo(() => {
-    if (view === "month") {
-      return format(new Date(cursor.year, cursor.month, 1), "LLLL yyyy", { locale: ru })
+  const dayCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const task of visibleTasks) {
+      if (task.scheduledDate) counts.set(task.scheduledDate, (counts.get(task.scheduledDate) ?? 0) + 1)
+      if (task.dueDate && task.dueDate !== task.scheduledDate) {
+        counts.set(task.dueDate, (counts.get(task.dueDate) ?? 0) + 1)
+      }
     }
-    if (view === "week") {
-      return `${format(parseISODate(weekDays[0]), "d MMM", { locale: ru })} – ${format(parseISODate(weekDays[6]), "d MMM yyyy", { locale: ru })}`
-    }
-    if (view === "day") {
-      return format(parseISODate(selected), "EEEE, d MMMM yyyy", { locale: ru })
-    }
-    return `${format(parseISODate(listDays[0]), "d MMM", { locale: ru })} – ${format(parseISODate(listDays[LIST_DAYS - 1]), "d MMM yyyy", { locale: ru })}`
-  }, [view, cursor, weekDays, selected, listDays])
+    return counts
+  }, [visibleTasks])
 
-  const shift = (dir: -1 | 1) => {
-    if (view === "month") {
-      const d = new Date(cursor.year, cursor.month + dir, 1)
-      setCursor({ year: d.getFullYear(), month: d.getMonth() })
-      setSelected(isoDate(new Date(d.getFullYear(), d.getMonth(), 1)))
+  const title = useMemo(() => {
+    if (view === "year") return String(cursor.year)
+    if (view === "month") return format(new Date(cursor.year, cursor.month, 1), "LLLL yyyy", { locale: ru })
+    if (view === "week") {
+      return `${format(parseISODate(visibleWeekDays[0] ?? weekDays[0]), "d MMM", { locale: ru })} – ${format(parseISODate(visibleWeekDays[visibleWeekDays.length - 1] ?? weekDays[6]), "d MMM yyyy", { locale: ru })}`
+    }
+    if (view === "days") {
+      return `${format(parseISODate(customDays[0]), "d MMM", { locale: ru })} – ${format(parseISODate(customDays[customDays.length - 1]), "d MMM yyyy", { locale: ru })}`
+    }
+    if (view === "day") return format(parseISODate(selected), "EEEE, d MMMM yyyy", { locale: ru })
+    return `${format(parseISODate(listDays[0]), "d MMM", { locale: ru })} – ${format(parseISODate(listDays[LIST_DAYS - 1]), "d MMM yyyy", { locale: ru })}`
+  }, [view, cursor, weekDays, visibleWeekDays, customDays, selected, listDays])
+
+  const shift = (direction: -1 | 1) => {
+    if (view === "year") {
+      const year = cursor.year + direction
+      setCursor({ year, month: cursor.month })
+      const next = isoDate(new Date(year, cursor.month, 1))
+      setSelected(next)
+      setSelectedSlot(null)
       return
     }
-    const step = view === "list" ? LIST_DAYS : view === "day" ? 1 : 7
-    const next = addDays(selected, dir * step)
+    if (view === "month") {
+      const date = new Date(cursor.year, cursor.month + direction, 1)
+      setCursor({ year: date.getFullYear(), month: date.getMonth() })
+      setSelected(isoDate(date))
+      setSelectedSlot(null)
+      return
+    }
+    const step = view === "list" ? LIST_DAYS : view === "day" ? 1 : view === "days" ? dayCount : 7
+    const next = addDays(selected, direction * step)
     setSelected(next)
+    setSelectedSlot(null)
     const parsed = parseISODate(next)
     setCursor({ year: parsed.getFullYear(), month: parsed.getMonth() })
   }
 
   const goToday = () => {
     setSelected(today)
-    const d = parseISODate(today)
-    setCursor({ year: d.getFullYear(), month: d.getMonth() })
+    setCursor({ year: now.getFullYear(), month: now.getMonth() })
+    setSelectedSlot(null)
   }
 
-  const onEventClick = (task: CalendarTask) => setTaskId(task.virtualOccurrence ? task.recurrenceSeriesId ?? task.id : task.id)
+  const setCalendarView = (nextView: CalendarView) => {
+    setView(nextView)
+    setSelectedSlot(null)
+    const date = parseISODate(selected)
+    setCursor({ year: date.getFullYear(), month: date.getMonth() })
+  }
+
+  const onEventClick = (task: CalendarTask) =>
+    setTaskId(task.virtualOccurrence ? task.recurrenceSeriesId ?? task.id : task.id)
 
   const eventChipClass = (task: CalendarTask, kind: "scheduled" | "due") =>
     cn(
-      "block w-full truncate rounded border px-1.5 py-0.5 text-left text-[11px] leading-tight transition hover:brightness-110",
+      "block w-full truncate rounded-md border px-1.5 py-1 text-left text-[11px] leading-tight transition hover:brightness-110 focus-visible:z-20",
       PRIORITY_COLOR[task.priority] ?? PRIORITY_COLOR.none,
-      isDoneStatus(task.status, settings) && "opacity-50 line-through",
+      isDoneStatus(task.status, settings) && "opacity-55 line-through",
       (kind === "due" || task.virtualOccurrence) && "border-dashed",
     )
 
   const renderEventChip = (task: CalendarTask, day: string) => {
     const isDue = task.dueDate === day && task.scheduledDate !== day
+    const hasDeadline = task.dueDate === day
     const time = getCalendarTaskTime(task)
     return (
       <button
         key={task.id}
         type="button"
         draggable={!task.virtualOccurrence}
-        onDragStart={task.virtualOccurrence ? undefined : (e) => {
-          e.dataTransfer.setData("text/task-id", task.id)
-          e.dataTransfer.effectAllowed = "move"
+        onDragStart={task.virtualOccurrence ? undefined : (event) => {
+          event.dataTransfer.setData("text/task-id", task.id)
+          event.dataTransfer.effectAllowed = "move"
         }}
-        onClick={(e) => {
-          e.stopPropagation()
+        onClick={(event) => {
+          event.stopPropagation()
           onEventClick(task)
         }}
         className={eventChipClass(task, isDue ? "due" : "scheduled")}
-        title={`${task.title}${time ? ` · ${time}` : ""}${isDue ? " (срок)" : ""}${task.virtualOccurrence ? " · повторение" : ""}`}
+        title={`${task.title}${time ? ` · ${time}` : ""}${isDue ? " · срок" : ""}${task.virtualOccurrence ? " · повторение" : ""}`}
       >
-        {time ? <span className="mr-1 opacity-80">{time}</span> : null}
-        {task.title}
+        {time ? <span className="mr-1 tabular-nums opacity-80">{time}</span> : null}
+        <span className="inline-flex min-w-0 items-center gap-1">
+          {task.title}
+          {hasDeadline ? <span className="ml-1 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-rose-300" title="Дедлайн" /> : null}
+        </span>
       </button>
     )
   }
 
-  const handleDayDrop = (day: string) => (e: DragEvent) => {
-    e.preventDefault()
-    const id = e.dataTransfer.getData("text/task-id")
-    const task = tasks.find((t) => t.id === id)
+  const handleDayDrop = (day: string) => (event: DragEvent) => {
+    event.preventDefault()
+    const id = event.dataTransfer.getData("text/task-id")
+    const task = tasks.find((item) => item.id === id)
     if (!task) return
     updateTask(id, getCalendarDayDropPatch(task, day))
   }
 
-  const handleSlotDrop = (day: string, minutes: number) => (e: DragEvent) => {
-    e.preventDefault()
-    const id = e.dataTransfer.getData("text/task-id")
-    const task = tasks.find((t) => t.id === id)
+  const handleAllDayDrop = (day: string) => (event: DragEvent) => {
+    event.preventDefault()
+    const id = event.dataTransfer.getData("text/task-id")
+    const task = tasks.find((item) => item.id === id)
+    if (!task) return
+    updateTask(id, {
+      scheduledDate: day,
+      startAt: undefined,
+      endAt: undefined,
+      allDay: true,
+    })
+  }
+
+  const handleSlotDrop = (day: string, minutes: number) => (event: DragEvent) => {
+    event.preventDefault()
+    const id = event.dataTransfer.getData("text/task-id")
+    const task = tasks.find((item) => item.id === id)
     if (!task) return
     updateTask(id, getCalendarDropPatch(task, day, minutes))
   }
 
-  const TimeGrid = ({ days }: { days: string[] }) => {
-    const gridHeight = ((SLOT_END - SLOT_START) / SLOT_STEP) * 28
+  const selectSlot = (day: string, minutes: number | null) => {
+    setSelected(day)
+    setSelectedSlot(minutes)
+    setDraft("")
+  }
+
+  const handleResizeStart = (
+    event: PointerEvent<HTMLSpanElement>,
+    task: CalendarTask,
+    day: string,
+    range: TaskMinutes,
+    edge: "start" | "end",
+  ) => {
+    if (task.virtualOccurrence) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setResizeDraft({
+      taskId: task.id,
+      day,
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      start: range.start,
+      end: range.end,
+      edge,
+      previewStart: range.start,
+      previewEnd: range.end,
+    })
+  }
+
+  const handleResizeMove = (event: PointerEvent<HTMLSpanElement>, taskId: string) => {
+    if (!resizeDraft || resizeDraft.taskId !== taskId || resizeDraft.pointerId !== event.pointerId) return
+    const steps = Math.round((event.clientY - resizeDraft.startY) / ROW_HEIGHT)
+    if (resizeDraft.edge === "start") {
+      const nextStart = Math.max(
+        0,
+        Math.min(resizeDraft.end - 15, Math.round((resizeDraft.start + steps * SLOT_STEP) / 15) * 15),
+      )
+      setResizeDraft({ ...resizeDraft, previewStart: nextStart })
+      return
+    }
+    const nextEnd = Math.max(
+      resizeDraft.start + 15,
+      Math.min(24 * 60, Math.round((resizeDraft.end + steps * SLOT_STEP) / 15) * 15),
+    )
+    setResizeDraft({ ...resizeDraft, previewEnd: nextEnd })
+  }
+
+  const handleResizeEnd = (event: PointerEvent<HTMLSpanElement>, task: CalendarTask) => {
+    if (!resizeDraft || resizeDraft.taskId !== task.id || resizeDraft.pointerId !== event.pointerId) return
+    const current = resizeDraft
+    updateTask(task.id, getCalendarResizePatch(task, current.day, current.previewStart, current.previewEnd))
+    setResizeDraft(null)
+  }
+
+  const renderTimeGrid = (days: string[]) => {
+    const slotStart = slotStartHour * 60
+    const slotEnd = slotEndHour * 60
+    const timeSlots = Array.from({ length: (slotEnd - slotStart) / SLOT_STEP }, (_, i) => slotStart + i * SLOT_STEP)
+    const gridHeight = timeSlots.length * ROW_HEIGHT
+    const nowMinutes = now.getHours() * 60 + now.getMinutes()
 
     return (
-      <div className="overflow-x-auto">
+      <>
         <div
-          className="grid border-b border-line"
-          style={{ gridTemplateColumns: `3.5rem repeat(${days.length}, minmax(6rem, 1fr))` }}
+          className="grid min-w-full"
+          style={{ gridTemplateColumns: `3.5rem repeat(${days.length}, minmax(9.5rem, 1fr))` }}
         >
-          <div className="border-r border-line px-1 py-2 text-[10px] text-muted">весь день</div>
+          <div className="nexora-calendar-all-day-label border-r border-white/10 px-2 py-3 text-[10px] font-medium uppercase tracking-wide text-white/45">
+            весь день
+          </div>
           {days.map((day) => {
-            const allDay = tasksForDay(day).filter((t) => t.allDay || !taskMinutes(t))
+            const allDay = tasksForDay(day).filter((task) => task.allDay || !taskMinutes(task))
+            const visible = allDay.slice(0, 4)
             return (
               <div
                 key={`allday-${day}`}
                 className={cn(
-                  "min-h-10 space-y-0.5 border-r border-line p-1",
-                  day === today && "bg-accent/5",
+                  "nexora-calendar-all-day min-h-[4.5rem] space-y-1 border-r border-white/10 p-1.5",
+                  day === today && "bg-sky-400/[0.055]",
                 )}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={handleDayDrop(day)}
-                onClick={() => setSelected(day)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={handleAllDayDrop(day)}
+                onClick={() => selectSlot(day, null)}
               >
-                {allDay.slice(0, 4).map((t) => renderEventChip(t, day))}
-                {allDay.length > 4 && (
-                  <span className="text-[10px] text-muted">+{allDay.length - 4}</span>
+                {visible.map((task) => renderEventChip(task, day))}
+                {allDay.length > visible.length && (
+                  <span className="block px-1 text-[10px] text-white/45">+{allDay.length - visible.length} ещё</span>
                 )}
               </div>
             )
@@ -264,120 +444,239 @@ export function CalendarPage() {
 
         <div
           className="grid"
-          style={{ gridTemplateColumns: `3.5rem repeat(${days.length}, minmax(6rem, 1fr))` }}
+          style={{ gridTemplateColumns: `3.5rem repeat(${days.length}, minmax(9.5rem, 1fr))` }}
         >
-          <div className="relative border-r border-line" style={{ height: gridHeight }}>
-            {TIME_SLOTS.map((m) =>
-              m % 60 === 0 ? (
-                <div
-                  key={m}
-                  className="absolute right-1 -translate-y-1/2 text-[10px] text-muted"
-                  style={{ top: ((m - SLOT_START) / SLOT_STEP) * 28 }}
-                >
-                  {localTimeLabel(m)}
-                </div>
-              ) : null,
-            )}
+          <div className="relative border-r border-white/10" style={{ height: gridHeight }}>
+            {timeSlots.map((minutes) => minutes % 60 === 0 ? (
+              <div
+                key={minutes}
+                className="absolute right-2 -translate-y-1/2 text-[10px] tabular-nums text-white/45"
+                style={{ top: ((minutes - slotStart) / SLOT_STEP) * ROW_HEIGHT }}
+              >
+                {localTimeLabel(minutes)}
+              </div>
+            ) : null)}
           </div>
 
           {days.map((day) => {
-            const timed = tasksForDay(day).filter((t) => taskMinutes(t))
+            const tasksForColumn = tasksForDay(day).filter((task) => taskMinutes(task))
+            const timed = tasksForColumn.flatMap((task) => {
+              const range = taskMinutes(task)
+              if (!range) return []
+              const start = Math.max(slotStart, range.start)
+              const end = Math.min(slotEnd, range.end)
+              return end > start ? [{ task, start, end, rawStart: range.start, rawEnd: range.end }] : []
+            })
+            const layout = layoutCalendarEvents(timed.map(({ task, start, end }) => ({
+              id: task.id,
+              start,
+              end,
+            })))
+            const layoutById = new Map(layout.map((item) => [item.id, item] as const))
+            const showNow = day === today && nowMinutes >= slotStart && nowMinutes <= slotEnd
             return (
               <div
                 key={`grid-${day}`}
-                className={cn("relative border-r border-line", day === today && "bg-accent/5")}
+                className={cn(
+                  "relative border-r border-white/10",
+                  day === today && "bg-sky-400/[0.045]",
+                )}
                 style={{ height: gridHeight }}
-                onClick={() => setSelected(day)}
               >
-                {TIME_SLOTS.map((m) => (
+                {timeSlots.map((minutes) => (
                   <div
-                    key={m}
+                    key={minutes}
                     className={cn(
-                      "absolute inset-x-0 border-t",
-                      m % 60 === 0 ? "border-line/80" : "border-line/30",
+                      "absolute inset-x-0 border-t transition-colors",
+                      minutes % 60 === 0 ? "border-white/[0.13]" : "border-white/[0.055]",
+                      "hover:bg-white/[0.025]",
                     )}
-                    style={{ top: ((m - SLOT_START) / SLOT_STEP) * 28, height: 28 }}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={handleSlotDrop(day, m)}
+                    style={{
+                      top: ((minutes - slotStart) / SLOT_STEP) * ROW_HEIGHT,
+                      height: ROW_HEIGHT,
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Создать задачу ${localTimeLabel(minutes)}`}
+                    onClick={() => selectSlot(day, minutes)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault()
+                        selectSlot(day, minutes)
+                      }
+                    }}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={handleSlotDrop(day, minutes)}
+                    title={`Создать задачу в ${localTimeLabel(minutes)}`}
                   />
                 ))}
-                {timed.map((task) => {
-                  const range = taskMinutes(task)!
-                  const top = Math.max(0, ((range.start - SLOT_START) / SLOT_STEP) * 28)
-                  const height = Math.max(22, ((range.end - range.start) / SLOT_STEP) * 28)
+
+                {timed.map(({ task, start, end, rawStart, rawEnd }) => {
+                  const layoutItem = layoutById.get(task.id)
+                  if (!layoutItem) return null
+                  const previewStart = resizeDraft?.taskId === task.id ? resizeDraft.previewStart : rawStart
+                  const previewEnd = resizeDraft?.taskId === task.id ? resizeDraft.previewEnd : rawEnd
+                  const visibleStart = Math.max(slotStart, previewStart)
+                  const visibleEnd = Math.min(slotEnd, previewEnd)
+                  const top = ((visibleStart - slotStart) / SLOT_STEP) * ROW_HEIGHT
+                  const height = Math.max(25, ((visibleEnd - visibleStart) / SLOT_STEP) * ROW_HEIGHT)
+                  const isDueOnly = task.dueDate === day && task.scheduledDate !== day && task.startAt?.slice(0, 10) !== day
+                  const colorClass = PRIORITY_COLOR[task.priority] ?? PRIORITY_COLOR.none
                   return (
                     <button
                       key={task.id}
                       type="button"
                       draggable={!task.virtualOccurrence}
-                      onDragStart={task.virtualOccurrence ? undefined : (e) => {
-                        e.dataTransfer.setData("text/task-id", task.id)
-                        e.dataTransfer.effectAllowed = "move"
+                      onDragStart={task.virtualOccurrence ? undefined : (event) => {
+                        event.dataTransfer.setData("text/task-id", task.id)
+                        event.dataTransfer.effectAllowed = "move"
                       }}
-                      onClick={(e) => {
-                        e.stopPropagation()
+                      onClick={(event) => {
+                        event.stopPropagation()
                         onEventClick(task)
                       }}
                       className={cn(
-                        "absolute left-0.5 right-0.5 z-[1] overflow-hidden rounded border px-1 py-0.5 text-left text-[11px] shadow-sm",
-                        PRIORITY_COLOR[task.priority] ?? PRIORITY_COLOR.none,
-                        isDoneStatus(task.status, settings) && "opacity-50 line-through",
+                        "nexora-calendar-event absolute z-[2] overflow-hidden rounded-md border px-2 py-1.5 text-left shadow-sm transition-[filter,opacity] hover:brightness-110 focus-visible:z-20",
+                        colorClass,
+                        isDoneStatus(task.status, settings) && "opacity-55",
+                        (task.virtualOccurrence || isDueOnly) && "border-dashed",
+                        resizeDraft?.taskId === task.id && "ring-1 ring-white/70",
                       )}
-                      style={{ top, height }}
-                      title={task.title}
+                      style={{
+                        top,
+                        height,
+                        left: `calc(${layoutItem.leftPercent}% + 2px)`,
+                        width: `calc(${layoutItem.widthPercent}% - 4px)`,
+                        zIndex: 2 + layoutItem.column,
+                      }}
+                      title={`${task.title} · ${formatRange(previewStart, previewEnd)}${task.virtualOccurrence ? " · повторение" : ""}`}
                     >
-                      <span className="font-medium opacity-90">{localTimeLabel(range.start)}</span>
-                      <span className="ml-1 block truncate">{task.title}</span>
+                      <span className="block text-[10px] font-semibold tabular-nums leading-tight opacity-85">
+                        {formatRange(previewStart, previewEnd)}
+                      </span>
+                      <span className="mt-0.5 block overflow-hidden text-ellipsis text-[11px] font-semibold leading-tight">
+                        {task.title}
+                      </span>
+                      {task.dueDate === day ? (
+                        <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-rose-300" title="Дедлайн" />
+                      ) : null}
+                      {task.description ? (
+                        <span className="mt-1 block line-clamp-2 text-[10px] leading-tight opacity-70">
+                          {task.description}
+                        </span>
+                      ) : null}
+                      {!task.virtualOccurrence ? (
+                        <>
+                          <span
+                            role="presentation"
+                            className="nexora-calendar-resize-handle absolute inset-x-1 top-0 flex h-2 cursor-ns-resize items-center justify-center"
+                            title="Изменить начало"
+                            onPointerDown={(event) => handleResizeStart(event, task, day, { start: rawStart, end: rawEnd }, "start")}
+                            onPointerMove={(event) => handleResizeMove(event, task.id)}
+                            onPointerUp={(event) => handleResizeEnd(event, task)}
+                            onPointerCancel={() => setResizeDraft(null)}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <span className="h-0.5 w-7 rounded-full bg-current/65" />
+                          </span>
+                          <span
+                            role="presentation"
+                            className="nexora-calendar-resize-handle absolute inset-x-1 bottom-0 flex h-2 cursor-ns-resize items-center justify-center"
+                            title="Изменить конец"
+                            onPointerDown={(event) => handleResizeStart(event, task, day, { start: rawStart, end: rawEnd }, "end")}
+                            onPointerMove={(event) => handleResizeMove(event, task.id)}
+                            onPointerUp={(event) => handleResizeEnd(event, task)}
+                            onPointerCancel={() => setResizeDraft(null)}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <span className="h-0.5 w-7 rounded-full bg-current/65" />
+                          </span>
+                        </>
+                      ) : null}
                     </button>
                   )
                 })}
+
+                {showNow ? (
+                  <div
+                    className="pointer-events-none absolute inset-x-0 z-[4] flex items-center"
+                    style={{ top: ((nowMinutes - slotStart) / SLOT_STEP) * ROW_HEIGHT }}
+                    aria-label="Текущее время"
+                  >
+                    <span className="-ml-1.5 h-2.5 w-2.5 rounded-full bg-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.65)]" />
+                    <span className="h-px flex-1 bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.45)]" />
+                  </div>
+                ) : null}
               </div>
             )
           })}
         </div>
-      </div>
+      </>
     )
   }
 
+  const handleCreateTask = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const value = draft.trim()
+    if (!value) return
+    const schedulePatch = selectedSlot === null
+      ? { scheduledDate: selected }
+      : getCalendarCreatePatch(selected, selectedSlot)
+    const id = addTask({
+      title: value,
+      status: "planned",
+      priority: "none",
+      ...schedulePatch,
+    })
+    setDraft("")
+    setSelectedSlot(null)
+    setTaskId(id)
+  }
+
+  const setSelectedDate = (day: string) => {
+    setSelected(day)
+    setSelectedSlot(null)
+    const date = parseISODate(day)
+    setCursor({ year: date.getFullYear(), month: date.getMonth() })
+  }
+
   return (
-    <div className="mx-auto max-w-6xl">
-      <PageHeader
-        kicker="Календарь"
-        title="Планирование"
-        text="Вид как в TaskNotes: месяц, неделя и день с time-grid, перетаскивание задач, срок и план."
-      >
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 rounded-lg border border-line bg-black/20 p-0.5">
-            <button type="button" className="icon-btn" aria-label="Назад" onClick={() => shift(-1)}>
-              <ChevronLeft size={18} />
+    <div className="mx-auto w-full max-w-[1800px] space-y-4 pb-6">
+      <PageHeader kicker="Календарь" title="Планирование" text="Временная сетка, задачи и дедлайны в одном календаре.">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-black/20 p-0.5">
+            <button type="button" className="icon-btn" aria-label="Предыдущий период" onClick={() => shift(-1)}>
+              <ChevronLeft size={17} />
             </button>
-            <button type="button" className="btn btn-ghost px-2 text-sm" onClick={goToday}>
+            <button type="button" className="btn btn-ghost px-2 text-xs" onClick={goToday}>
               Сегодня
             </button>
-            <button type="button" className="icon-btn" aria-label="Вперёд" onClick={() => shift(1)}>
-              <ChevronRight size={18} />
+            <button type="button" className="icon-btn" aria-label="Следующий период" onClick={() => shift(1)}>
+              <ChevronRight size={17} />
             </button>
           </div>
 
-          <p className="min-w-[12rem] text-center text-sm font-medium capitalize">{title}</p>
+          <p className="min-w-[13rem] text-center text-sm font-medium capitalize tabular-nums">{title}</p>
 
-          <div className="flex rounded-lg border border-line p-0.5">
-            {(
-              [
-                ["month", "Месяц"],
-                ["week", "Неделя"],
-                ["day", "День"],
-                ["list", "Список"],
-              ] as const
-            ).map(([id, label]) => (
+          <div className="flex flex-wrap items-center gap-0.5 rounded-lg border border-white/10 bg-black/20 p-0.5">
+            {([
+              ["year", "Г"],
+              ["month", "М"],
+              ["week", "Н"],
+              ["days", `${dayCount}д`],
+              ["day", "Д"],
+              ["list", "С"],
+            ] as const).map(([id, label]) => (
               <button
                 key={id}
                 type="button"
                 className={cn(
-                  "rounded-md px-2.5 py-1 text-sm transition",
-                  view === id ? "bg-accent/20 text-accent" : "text-muted hover:bg-white/5",
+                  "min-w-8 rounded-md px-2 py-1.5 text-[11px] font-medium transition",
+                  view === id ? "bg-sky-400/15 text-sky-300 shadow-[0_0_0_1px_rgba(56,189,248,0.2)_inset]" : "text-white/55 hover:bg-white/5 hover:text-white/90",
                 )}
-                onClick={() => setView(id)}
+                onClick={() => setCalendarView(id)}
+                aria-pressed={view === id}
+                title={{ year: "Год", month: "Месяц", week: "Неделя", days: "Несколько дней", day: "День", list: "Список" }[id]}
               >
                 {label}
               </button>
@@ -386,49 +685,142 @@ export function CalendarPage() {
         </div>
       </PageHeader>
 
-      <div className="mb-3 flex flex-wrap items-center gap-3 text-xs text-muted">
-        <label className="flex cursor-pointer items-center gap-1.5">
-          <input
-            type="checkbox"
-            checked={showScheduled}
-            onChange={(e) => setShowScheduled(e.target.checked)}
-            className="rounded border-line"
-          />
-          Запланированные
-        </label>
-        <label className="flex cursor-pointer items-center gap-1.5">
-          <input
-            type="checkbox"
-            checked={showDue}
-            onChange={(e) => setShowDue(e.target.checked)}
-            className="rounded border-line"
-          />
-          Срок (due)
-        </label>
-        <span className="text-[10px] opacity-70">
-          Пунктир — только срок · цвет — приоритет
-        </span>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-white/55">
+          <label className="flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={showScheduled}
+              onChange={(event) => setShowScheduled(event.target.checked)}
+              className="accent-sky-400"
+            />
+            Запланировано
+          </label>
+          <label className="flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={showDue}
+              onChange={(event) => setShowDue(event.target.checked)}
+              className="accent-rose-400"
+            />
+            Дедлайны
+          </label>
+          {(view === "week" || view === "days") ? (
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showWeekends}
+                onChange={(event) => setShowWeekends(event.target.checked)}
+                className="accent-sky-400"
+              />
+              Выходные
+            </label>
+          ) : null}
+        </div>
+
+        {(view === "days" || view === "week" || view === "day") ? (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-white/50">
+            {view === "days" ? (
+              <label className="flex items-center gap-2">
+                Дней
+                <select
+                  value={dayCount}
+                  onChange={(event) => setDayCount(Number(event.target.value))}
+                  className="rounded-md border border-white/10 bg-[#151a1e] px-2 py-1.5 text-white/80"
+                >
+                  {Array.from({ length: 9 }, (_, i) => i + 2).map((count) => (
+                    <option key={count} value={count}>{count}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {view !== "day" ? (
+              <label className="flex items-center gap-2">
+                С
+                <select
+                  value={slotStartHour}
+                  onChange={(event) => setSlotStartHour(Math.min(Number(event.target.value), slotEndHour - 1))}
+                  className="rounded-md border border-white/10 bg-[#151a1e] px-2 py-1.5 text-white/80"
+                >
+                  {Array.from({ length: 24 }, (_, hour) => hour).filter((hour) => hour < slotEndHour).map((hour) => (
+                    <option key={hour} value={hour}>{localTimeLabel(hour * 60)}</option>
+                  ))}
+                </select>
+                До
+                <select
+                  value={slotEndHour}
+                  onChange={(event) => setSlotEndHour(Math.max(Number(event.target.value), slotStartHour + 1))}
+                  className="rounded-md border border-white/10 bg-[#151a1e] px-2 py-1.5 text-white/80"
+                >
+                  {Array.from({ length: 24 }, (_, hour) => hour + 1).filter((hour) => hour > slotStartHour).map((hour) => (
+                    <option key={hour} value={hour}>{localTimeLabel(hour * 60)}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
-      <Card className="overflow-hidden p-0">
-        {view === "month" && (
-          <div className="p-2">
-            <div className="grid grid-cols-7 border-b border-line text-center text-[11px] font-medium text-muted">
-              {HEADS[weekStartsOn].map((label) => (
-                <div key={label} className="py-2">
-                  {label}
+      <Card className="nexora-calendar-card overflow-hidden p-0">
+        {view === "year" ? (
+          <div className="grid grid-cols-2 gap-px bg-white/[0.07] p-px sm:grid-cols-3 xl:grid-cols-4">
+            {yearCells.map(({ month, days }) => (
+              <section key={month} className="min-w-0 bg-[#111518] p-3">
+                <button
+                  type="button"
+                  className="mb-2 text-sm font-semibold capitalize text-white/85 hover:text-sky-300"
+                  onClick={() => {
+                    setCursor({ year: cursor.year, month })
+                    setSelected(isoDate(new Date(cursor.year, month, 1)))
+                    setView("month")
+                  }}
+                >
+                  {monthName(cursor.year, month)}
+                </button>
+                <div className="mb-1 grid grid-cols-7 text-center text-[9px] text-white/35">
+                  {HEADS[weekStartsOn].map((label, index) => <span key={index}>{label}</span>)}
                 </div>
-              ))}
+                <div className="grid grid-cols-7 gap-y-1 text-center">
+                  {days.map((day, index) => {
+                    if (!day) return <span key={`empty-${index}`} />
+                    const date = parseISODate(day)
+                    const hasItems = (dayCounts.get(day) ?? 0) > 0
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => {
+                          setSelectedDate(day)
+                          setView("day")
+                        }}
+                        className={cn(
+                          "relative mx-auto flex h-6 w-6 items-center justify-center rounded-full text-[10px] transition hover:bg-white/10",
+                          date.getMonth() !== month && "opacity-25",
+                          day === today && "bg-sky-400 font-semibold text-slate-950 hover:bg-sky-300",
+                          day === selected && day !== today && "ring-1 ring-inset ring-sky-300/70",
+                        )}
+                      >
+                        {date.getDate()}
+                        {hasItems && day !== today ? <span className="absolute bottom-0.5 h-1 w-1 rounded-full bg-sky-300" /> : null}
+                      </button>
+                    )
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        ) : null}
+
+        {view === "month" ? (
+          <div className="p-2">
+            <div className="grid grid-cols-7 border-b border-white/10 text-center text-[11px] font-medium text-white/45">
+              {HEADS[weekStartsOn].map((label) => <div key={label} className="py-2">{label}</div>)}
             </div>
             <div className="grid grid-cols-7">
               {cells.map((day, index) => {
                 if (!day) {
-                  return (
-                    <div
-                      key={`e-${index}`}
-                      className="min-h-[5.5rem] border-b border-r border-line/50 bg-black/10"
-                    />
-                  )
+                  return <div key={`empty-${index}`} className="min-h-[7.5rem] border-b border-r border-white/[0.07] bg-black/10" />
                 }
                 const dayList = tasksForDay(day)
                 const isToday = day === today
@@ -438,92 +830,122 @@ export function CalendarPage() {
                   <div
                     key={day}
                     className={cn(
-                      "min-h-[5.5rem] border-b border-r border-line/50 p-1 transition",
-                      !inMonth && "opacity-40",
-                      isToday && "bg-accent/10",
-                      isSelected && "ring-1 ring-inset ring-accent/50",
+                      "min-h-[7.5rem] border-b border-r border-white/[0.07] p-1.5 transition hover:bg-white/[0.025]",
+                      !inMonth && "opacity-35",
+                      isToday && "bg-sky-400/[0.06]",
+                      isSelected && "ring-1 ring-inset ring-sky-300/55",
                     )}
-                    onDragOver={(e) => e.preventDefault()}
+                    onDragOver={(event) => event.preventDefault()}
                     onDrop={handleDayDrop(day)}
-                    onClick={() => setSelected(day)}
+                    onClick={() => setSelectedDate(day)}
                   >
-                    <div className="mb-0.5 flex items-center justify-between px-0.5">
-                      <span
-                        className={cn(
-                          "inline-flex h-6 w-6 items-center justify-center rounded-full text-xs",
-                          isToday && "bg-accent font-semibold text-black",
-                        )}
-                      >
+                    <div className="mb-1 flex items-center justify-between px-0.5">
+                      <span className={cn(
+                        "inline-flex h-6 w-6 items-center justify-center rounded-full text-xs",
+                        isToday && "bg-sky-400 font-semibold text-slate-950",
+                      )}>
                         {parseISODate(day).getDate()}
                       </span>
+                      {dayList.length > 0 ? <span className="text-[9px] tabular-nums text-white/35">{dayList.length}</span> : null}
                     </div>
-                    <div className="space-y-0.5">
-                      {dayList.slice(0, 3).map((t) => renderEventChip(t, day))}
-                      {dayList.length > 3 && (
-                        <span className="block px-1 text-[10px] text-muted">
-                          +{dayList.length - 3} ещё
-                        </span>
-                      )}
+                    <div className="space-y-1">
+                      {dayList.slice(0, 4).map((task) => renderEventChip(task, day))}
+                      {dayList.length > 4 ? (
+                        <span className="block px-1 text-[10px] text-white/40">+{dayList.length - 4} ещё</span>
+                      ) : null}
                     </div>
                   </div>
                 )
               })}
             </div>
           </div>
-        )}
+        ) : null}
 
-        {view === "week" && (
-          <div>
+        {view === "week" ? (
+          <div className="nexora-calendar-scroll overflow-x-auto">
+            <div style={{ width: `max(100%, calc(3.5rem + ${visibleWeekDays.length} * 9.5rem))` }}>
             <div
-              className="grid border-b border-line bg-black/20 text-center text-xs"
-              style={{ gridTemplateColumns: "3.5rem repeat(7, minmax(6rem, 1fr))" }}
+              className="nexora-calendar-day-header grid border-b border-white/10 bg-black/25 text-center text-xs"
+              style={{ gridTemplateColumns: `3.5rem repeat(${visibleWeekDays.length}, minmax(9.5rem, 1fr))` }}
             >
               <div />
-              {weekDays.map((day) => (
+              {visibleWeekDays.map((day) => (
                 <button
                   key={day}
                   type="button"
                   className={cn(
-                    "border-l border-line py-2 transition hover:bg-white/5",
-                    day === today && "bg-accent/10 text-accent",
+                    "border-l border-white/10 py-3 transition hover:bg-white/[0.04]",
+                    day === today && "bg-sky-400/[0.07] text-sky-300",
                     day === selected && "font-semibold",
                   )}
-                  onClick={() => setSelected(day)}
+                  onClick={() => setSelectedDate(day)}
                 >
-                  <div className="text-[10px] uppercase text-muted">
+                  <span className="block text-[10px] uppercase tracking-wide text-white/45">
                     {format(parseISODate(day), "EEE", { locale: ru })}
-                  </div>
-                  <div className="text-sm">{format(parseISODate(day), "d")}</div>
+                  </span>
+                  <span className="mt-0.5 block text-sm tabular-nums">{format(parseISODate(day), "d.MM", { locale: ru })}</span>
                 </button>
               ))}
             </div>
-            <TimeGrid days={weekDays} />
-          </div>
-        )}
-
-        {view === "day" && (
-          <div>
-            <div className="border-b border-line bg-black/20 px-4 py-2 text-sm capitalize text-muted">
-              {format(parseISODate(selected), "EEEE, d MMMM", { locale: ru })}
+            {renderTimeGrid(visibleWeekDays)}
             </div>
-            <TimeGrid days={[selected]} />
           </div>
-        )}
+        ) : null}
 
-        {view === "list" && (
-          <div className="divide-y divide-line">
+        {view === "days" ? (
+          <div className="nexora-calendar-scroll overflow-x-auto">
+            <div style={{ width: `max(100%, calc(3.5rem + ${customDays.length} * 9.5rem))` }}>
+            <div
+              className="nexora-calendar-day-header grid border-b border-white/10 bg-black/25 text-center text-xs"
+              style={{ gridTemplateColumns: `3.5rem repeat(${customDays.length}, minmax(9.5rem, 1fr))` }}
+            >
+              <div />
+              {customDays.map((day) => (
+                <button
+                  key={day}
+                  type="button"
+                  className={cn(
+                    "border-l border-white/10 py-3 transition hover:bg-white/[0.04]",
+                    day === today && "bg-sky-400/[0.07] text-sky-300",
+                    day === selected && "font-semibold",
+                  )}
+                  onClick={() => setSelectedDate(day)}
+                >
+                  <span className="block text-[10px] uppercase tracking-wide text-white/45">{format(parseISODate(day), "EEE", { locale: ru })}</span>
+                  <span className="mt-0.5 block text-sm tabular-nums">{format(parseISODate(day), "d.MM", { locale: ru })}</span>
+                </button>
+              ))}
+            </div>
+            {renderTimeGrid(customDays)}
+            </div>
+          </div>
+        ) : null}
+
+        {view === "day" ? (
+          <div className="nexora-calendar-scroll overflow-x-auto">
+            <div style={{ width: "max(100%, 13rem)" }}>
+              <div className="border-b border-white/10 bg-black/25 px-4 py-3 text-sm font-medium capitalize text-white/70">
+                {format(parseISODate(selected), "EEEE, d MMMM", { locale: ru })}
+              </div>
+              {renderTimeGrid([selected])}
+            </div>
+          </div>
+        ) : null}
+
+        {view === "list" ? (
+          <div className="divide-y divide-white/[0.08]">
             {listDays.map((day) => {
               const dayList = tasksForDay(day)
               return (
-                <div key={day} className="px-4 py-3">
+                <div key={day} className="px-4 py-4">
                   <button
                     type="button"
                     className={cn(
-                      "mb-2 text-left text-sm font-medium capitalize",
-                      day === today && "text-accent",
+                      "mb-2 text-left text-sm font-semibold capitalize",
+                      day === today ? "text-sky-300" : "text-white/80",
                     )}
                     onClick={() => {
-                      setSelected(day)
+                      setSelectedDate(day)
                       setView("day")
                     }}
                   >
@@ -531,9 +953,9 @@ export function CalendarPage() {
                     {day === today ? " · сегодня" : ""}
                   </button>
                   {dayList.length === 0 ? (
-                    <p className="text-xs text-muted">Нет задач</p>
+                    <p className="text-xs text-white/35">Нет задач</p>
                   ) : (
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       {dayList.map((task) => {
                         const time = getCalendarTaskTime(task)
                         const isDue = task.dueDate === day && task.scheduledDate !== day
@@ -542,21 +964,23 @@ export function CalendarPage() {
                             key={task.id}
                             type="button"
                             className={cn(
-                              "flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-sm transition hover:bg-white/5",
-                              PRIORITY_COLOR[task.priority] ?? "border-line",
-                              isDoneStatus(task.status, settings) && "opacity-50 line-through",
+                              "flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition hover:bg-white/[0.04]",
+                              PRIORITY_COLOR[task.priority] ?? "border-white/10",
+                              isDoneStatus(task.status, settings) && "opacity-55 line-through",
+                              (isDue || task.virtualOccurrence) && "border-dashed",
                             )}
                             onClick={() => onEventClick(task)}
                             draggable={!task.virtualOccurrence}
-                            onDragStart={task.virtualOccurrence ? undefined : (e) => {
-                              e.dataTransfer.setData("text/task-id", task.id)
+                            onDragStart={task.virtualOccurrence ? undefined : (event) => {
+                              event.dataTransfer.setData("text/task-id", task.id)
                             }}
                           >
-                            <span className="w-12 shrink-0 text-xs tabular-nums text-muted">
-                              {time ?? (isDue ? "срок" : "—")}
+                            <span className="flex w-20 shrink-0 items-center gap-1.5 text-xs tabular-nums text-white/55">
+                              <Clock3 size={12} />
+                              {time ?? (isDue ? "дедлайн" : "весь день")}
                             </span>
                             <span className="min-w-0 flex-1 truncate">{task.title}</span>
-                            <span className="shrink-0 text-[10px] text-muted">
+                            <span className="shrink-0 text-[10px] text-white/45">
                               {priorityLabels[task.priority] ?? task.priority}
                             </span>
                           </button>
@@ -568,40 +992,35 @@ export function CalendarPage() {
               )
             })}
           </div>
-        )}
+        ) : null}
       </Card>
 
-      <Card className="mt-4">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="font-semibold capitalize">
-            {format(parseISODate(selected), "EEEE, d MMMM", { locale: ru })}
-          </h2>
-          {selected === today && <span className="text-xs text-accent">Сегодня</span>}
+      <Card className="nexora-calendar-composer">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold capitalize">
+              {format(parseISODate(selected), "EEEE, d MMMM", { locale: ru })}
+            </h2>
+            <p className="mt-1 text-xs text-white/45">
+              {selected === today ? "Сегодня" : "Выбранная дата"}
+              {selectedSlot === null ? " · задача на весь день" : ` · ${localTimeLabel(selectedSlot)}–${localTimeLabel(Math.min(selectedSlot + 60, 24 * 60))}`}
+            </p>
+          </div>
+          {selectedSlot !== null ? (
+            <button type="button" className="text-xs text-sky-300 hover:text-sky-200" onClick={() => setSelectedSlot(null)}>
+              Убрать время
+            </button>
+          ) : null}
         </div>
-        <form
-          className="mt-3 flex gap-2"
-          onSubmit={(e) => {
-            e.preventDefault()
-            const value = draft.trim()
-            if (!value) return
-            const id = addTask({
-              title: value,
-              status: "planned",
-              scheduledDate: selected,
-              priority: "none",
-            })
-            setDraft("")
-            setTaskId(id)
-          }}
-        >
+        <form className="mt-3 flex flex-wrap gap-2" onSubmit={handleCreateTask}>
           <input
-            className="field"
-            placeholder="Быстро добавить задачу на этот день"
+            className="field min-w-[14rem] flex-1"
+            placeholder={selectedSlot === null ? "Быстро добавить задачу на этот день" : `Новая задача · ${localTimeLabel(selectedSlot)}`}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(event) => setDraft(event.target.value)}
           />
-          <button className="btn btn-primary" type="submit">
-            Добавить
+          <button className="btn btn-primary" type="submit" disabled={!draft.trim()}>
+            Добавить задачу
           </button>
         </form>
       </Card>
