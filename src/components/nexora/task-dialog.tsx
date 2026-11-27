@@ -18,6 +18,7 @@ export function TaskDialog() {
   const updateTask = useNexora((s) => s.updateTask)
   const setTaskStatus = useNexora((s) => s.setTaskStatus)
   const skipTaskOccurrence = useNexora((s) => s.skipTaskOccurrence)
+  const updateRecurrenceSeries = useNexora((s) => s.updateRecurrenceSeries)
   const archiveTask = useNexora((s) => s.archiveTask)
   const restoreTask = useNexora((s) => s.restoreTask)
   const startTimer = useNexora((s) => s.startTimer)
@@ -231,6 +232,23 @@ export function TaskDialog() {
                   )
                 })}
               </div>
+            </div>
+          )}
+          {(task.recurrenceRule || task.recurrenceParentId) && (
+            <div className="mt-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  updateRecurrenceSeries(task.id, task.recurrenceRule)
+                  setTaskId(null)
+                }}
+              >
+                Применить правило ко всей серии
+              </Button>
+              <p className="mt-1 text-xs text-muted">
+                Обновит правило у исходной задачи и будущих активных повторений. Выполненные и пропущенные экземпляры останутся без изменений.
+              </p>
             </div>
           )}
           {task.recurrenceRule && (
