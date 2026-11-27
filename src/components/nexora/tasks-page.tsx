@@ -7,6 +7,8 @@ import type { TaskStatus, Priority } from "@/lib/nexora/types"
 import { Button, Card, Input, Select, Badge } from "./ui"
 import { getDependencyState, getTaskChildren } from "@/lib/nexora/task-logic"
 import { parseQuickTaskInput } from "@/lib/nexora/quick-task"
+import { createTaskFilterGroup, matchesTaskFilterGroup, type TaskFilterGroup } from "@/lib/nexora/task-filters"
+import { TaskFilterBuilder } from "./task-filter-builder"
 
 export function TasksPage() {
   const tasks = useNexora((s) => s.tasks)
@@ -40,6 +42,7 @@ export function TasksPage() {
   const [title, setTitle] = useState("")
   const [viewName, setViewName] = useState("")
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([])
+  const [advancedFilter, setAdvancedFilter] = useState<TaskFilterGroup>(() => createTaskFilterGroup())
 
   const today = isoDate()
   const weekLimit = addDays(today, 7)
@@ -66,6 +69,7 @@ export function TasksPage() {
         if (quickFilter === "unblocked") return !getDependencyState(t, tasks).isBlocked
         return true
       })
+      .filter((t) => matchesTaskFilterGroup(t, advancedFilter, tasks))
       .sort((a, b) => {
         const prio = { critical: 0, high: 1, medium: 2, low: 3, none: 4 }
         if (sortBy === "due") return (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31")
@@ -73,7 +77,7 @@ export function TasksPage() {
         if (sortBy === "title") return a.title.localeCompare(b.title, "ru")
         return (prio[a.priority] ?? 5) - (prio[b.priority] ?? 5)
       })
-  }, [tasks, filter, priorityFilter, projectFilter, search, view, quickFilter, today, weekLimit, sortBy])
+  }, [tasks, filter, priorityFilter, projectFilter, search, view, quickFilter, today, weekLimit, sortBy, advancedFilter])
 
   const selectedCount = selectedTaskIds.filter((id) => filtered.some((task) => task.id === id)).length
   const toggleTaskSelection = (id: string) => {
@@ -91,6 +95,7 @@ export function TasksPage() {
     setSortBy(saved.sortBy)
     setQuickFilter(saved.quickFilter)
     setSearch(saved.search)
+    setAdvancedFilter(saved.advancedFilter ?? createTaskFilterGroup())
     setLayout(saved.layout)
     if (saved.columns?.length) useUI.setState({ taskTableColumns: saved.columns })
     setView("active")
@@ -99,7 +104,7 @@ export function TasksPage() {
   const handleSaveView = () => {
     const name = viewName.trim()
     if (!name) return
-    saveTaskView({ name, filter, priorityFilter, projectFilter, sortBy, quickFilter, search, layout, columns: taskTableColumns })
+    saveTaskView({ name, filter, priorityFilter, projectFilter, sortBy, quickFilter, search, layout, columns: taskTableColumns, advancedFilter })
     setViewName("")
   }
   const selectedTasks = filtered.filter((task) => selectedTaskIds.includes(task.id))
@@ -238,6 +243,16 @@ export function TasksPage() {
             <Button key={saved.id} size="sm" variant="ghost" title={`Удалить представление «${saved.name}»`} onClick={() => removeTaskView(saved.id)}>× {saved.name}</Button>
           ))}
         </div>
+      )}
+
+      {view === "active" && (
+        <TaskFilterBuilder
+          group={advancedFilter}
+          onChange={setAdvancedFilter}
+          projects={projects.filter((project) => !project.archived)}
+          statusLabels={statusLabels}
+          priorityLabels={priorityLabels}
+        />
       )}
 
       {view === "active" && selectedCount > 0 && (

@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import type { Priority, TaskStatus } from "./types"
+import type { TaskFilterGroup } from "./task-filters"
 
 export type TaskTableColumn =
   | "title"
@@ -42,6 +43,7 @@ export type SavedTaskView = {
   search: string
   layout: "list" | "table" | "kanban"
   columns?: TaskTableColumn[]
+  advancedFilter?: TaskFilterGroup
 }
 
 type UIState = {
