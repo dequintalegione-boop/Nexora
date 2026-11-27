@@ -1,0 +1,21 @@
+import assert from "node:assert/strict"
+import test from "node:test"
+import { parseQuickTaskInput } from "./quick-task.ts"
+
+test("parses a relative scheduled date", () => {
+  const draft = parseQuickTaskInput("Подготовить отчёт через 3 дня", "2026-11-27")
+  assert.equal(draft.title, "Подготовить отчёт")
+  assert.equal(draft.scheduledDate, "2026-11-30")
+})
+
+test("parses a relative deadline without scheduling the task", () => {
+  const draft = parseQuickTaskInput("Оплатить счёт до завтра", "2026-11-27")
+  assert.equal(draft.title, "Оплатить счёт")
+  assert.equal(draft.dueDate, "2026-11-28")
+  assert.equal(draft.scheduledDate, undefined)
+})
+
+test("keeps unsupported relative phrases in the title", () => {
+  const draft = parseQuickTaskInput("Обсудить через 500 дней", "2026-11-27")
+  assert.equal(draft.title, "Обсудить через 500 дней")
+})
