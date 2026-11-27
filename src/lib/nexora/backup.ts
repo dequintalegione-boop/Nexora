@@ -1,4 +1,4 @@
-import { CURRENT_SCHEMA_VERSION, migratePersistedData } from "./migrate"
+import { CURRENT_SCHEMA_VERSION, migratePersistedData } from "./migrate.ts"
 import type { Persisted, Settings, Task } from "./types"
 import type { SavedTaskView, TaskTableColumn } from "./ui-store"
 import type { TaskTemplate } from "./task-templates"

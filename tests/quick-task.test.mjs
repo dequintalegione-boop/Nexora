@@ -9,6 +9,7 @@ test("parses relative date, priority, tags and contexts", () => {
       title: "Позвонить", priority: "high", scheduledDate: "2026-11-28",
       dueDate: undefined, startAt: undefined, endAt: undefined,
       tags: ["работа"], contexts: ["офис"],
+      status: undefined, projectTitle: undefined, estimatedMinutes: undefined,
     }
   )
 })
@@ -20,11 +21,17 @@ test("parses a deadline separately from the planned date", () => {
   assert.equal(result.dueDate, "2026-12-01")
 })
 
-test("keeps unknown syntax in the title and deduplicates metadata", () => {
+test("parses priority syntax and deduplicates metadata", () => {
   const result = parseQuickTaskInput("Проверить !срочно #дом #дом @ноутбук @ноутбук", "2026-11-27")
-  assert.equal(result.title, "Проверить !срочно")
+  assert.equal(result.title, "Проверить")
+  assert.equal(result.priority, "high")
   assert.deepEqual(result.tags, ["дом"])
   assert.deepEqual(result.contexts, ["ноутбук"])
+})
+
+test("keeps an unknown priority marker in the title", () => {
+  const result = parseQuickTaskInput("Проверить !неизвестно", "2026-11-27")
+  assert.equal(result.title, "Проверить !неизвестно")
 })
 
 test("supports critical priority and day after tomorrow", () => {
