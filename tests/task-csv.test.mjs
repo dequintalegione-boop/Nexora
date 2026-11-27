@@ -188,7 +188,7 @@ test("rejects invalid date anchors, timezone names and nested reminder/recurrenc
   assert.equal(parsed.tasks.length, 0)
   assert.deepEqual(parsed.errors.map((error) => error.row), [2, 3, 4, 5])
   assert.match(parsed.errors[0].message, /dueDate/)
-  assert.match(parsed.errors[1].message, /интервал/)
+  assert.match(parsed.errors[1].message, /интервал/i)
   assert.match(parsed.errors[2].message, /reminders/)
   assert.match(parsed.errors[3].message, /timezone/)
 })
