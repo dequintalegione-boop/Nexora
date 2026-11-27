@@ -64,8 +64,10 @@ export function expandTasksForView(
   }
   const savedInstances = [...savedByOccurrence.values()].filter((task) => !task.archived && !task.deletedAt)
   const occurrences: TaskOccurrenceView[] = expandTaskOccurrences(tasks, range.start, range.end)
-  const occurrenceTasks: TaskViewItem[] = occurrences.map(({ task, isVirtual, seriesId }) => ({
+  const occurrenceTasks: TaskViewItem[] = occurrences.map(({ task, isVirtual, seriesId, occurrenceDate, occurrenceNumber }) => ({
     ...task,
+    occurrenceDate,
+    occurrenceNumber,
     virtualOccurrence: isVirtual,
     recurrenceSeriesId: seriesId,
   }))
