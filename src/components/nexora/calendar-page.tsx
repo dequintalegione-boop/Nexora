@@ -127,6 +127,7 @@ function monthName(year: number, month: number) {
 
 export function CalendarPage() {
   const [now, setNow] = useState(() => new Date())
+  const calendarScrollRef = useRef<HTMLDivElement | null>(null)
   const today = isoDate(now)
   const initial = parseISODate(today)
   const [view, setView] = useState<CalendarView>("week")
@@ -160,6 +161,20 @@ export function CalendarPage() {
     const timer = window.setInterval(() => setNow(new Date()), 60_000)
     return () => window.clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    if (view !== "week" && view !== "days" && view !== "day") return
+    const frame = window.requestAnimationFrame(() => {
+      const container = calendarScrollRef.current
+      const marker = container?.querySelector<HTMLElement>("[data-calendar-now-marker]")
+      if (!container || !marker) return
+      const markerTop = marker.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop
+      const targetTop = markerTop - container.clientHeight * 0.34
+      const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"
+      container.scrollTo({ top: Math.max(0, targetTop), behavior })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [view, selected, slotStartHour, slotEndHour])
 
   const weekStartsOn = useNexora((s) => s.settings.weekStartsOn)
   const settings = useNexora((s) => s.settings)
@@ -675,7 +690,7 @@ export function CalendarPage() {
           className="grid min-w-full"
           style={{ gridTemplateColumns: `3.5rem repeat(${days.length}, minmax(9.5rem, 1fr))` }}
         >
-          <div className="nexora-calendar-all-day-label border-r border-white/10 px-2 py-3 text-[10px] font-medium uppercase tracking-wide text-white/45">
+          <div className="nexora-calendar-all-day-label nexora-calendar-time-gutter border-r border-white/10 px-2 py-3 text-[10px] font-medium uppercase tracking-wide text-white/45">
             весь день
           </div>
           {days.map((day) => {
@@ -708,7 +723,7 @@ export function CalendarPage() {
           className="nexora-calendar-time-grid grid"
           style={{ gridTemplateColumns: `3.5rem repeat(${days.length}, minmax(9.5rem, 1fr))` }}
         >
-          <div className="relative border-r border-white/10" style={{ height: gridHeight }}>
+          <div className="nexora-calendar-time-gutter relative border-r border-white/10" style={{ height: gridHeight }}>
             {timeSlots.map((minutes) => minutes % 60 === 0 ? (
               <div
                 key={minutes}
@@ -932,7 +947,8 @@ export function CalendarPage() {
 
                 {showNow ? (
                   <div
-                    className="pointer-events-none absolute inset-x-0 z-[4] flex items-center"
+                    className="nexora-calendar-now-marker pointer-events-none absolute inset-x-0 z-[4] flex items-center"
+                    data-calendar-now-marker="true"
                     style={{ top: ((nowMinutes - slotStart) / SLOT_STEP) * ROW_HEIGHT }}
                     aria-label="Текущее время"
                   >
@@ -1255,13 +1271,13 @@ export function CalendarPage() {
         ) : null}
 
         {view === "week" ? (
-          <div className="nexora-calendar-scroll overflow-x-auto">
+          <div ref={calendarScrollRef} className="nexora-calendar-scroll">
             <div style={{ width: `max(100%, calc(3.5rem + ${visibleWeekDays.length} * 9.5rem))` }}>
             <div
               className="nexora-calendar-day-header grid border-b border-white/10 bg-black/25 text-center text-xs"
               style={{ gridTemplateColumns: `3.5rem repeat(${visibleWeekDays.length}, minmax(9.5rem, 1fr))` }}
             >
-              <div />
+              <div className="nexora-calendar-header-corner" />
               {visibleWeekDays.map((day) => (
                 <button
                   key={day}
@@ -1286,13 +1302,13 @@ export function CalendarPage() {
         ) : null}
 
         {view === "days" ? (
-          <div className="nexora-calendar-scroll overflow-x-auto">
+          <div ref={calendarScrollRef} className="nexora-calendar-scroll">
             <div style={{ width: `max(100%, calc(3.5rem + ${customDays.length} * 9.5rem))` }}>
             <div
               className="nexora-calendar-day-header grid border-b border-white/10 bg-black/25 text-center text-xs"
               style={{ gridTemplateColumns: `3.5rem repeat(${customDays.length}, minmax(9.5rem, 1fr))` }}
             >
-              <div />
+              <div className="nexora-calendar-header-corner" />
               {customDays.map((day) => (
                 <button
                   key={day}
@@ -1315,9 +1331,9 @@ export function CalendarPage() {
         ) : null}
 
         {view === "day" ? (
-          <div className="nexora-calendar-scroll overflow-x-auto">
+          <div ref={calendarScrollRef} className="nexora-calendar-scroll">
             <div style={{ width: "max(100%, 13rem)" }}>
-              <div className="border-b border-white/10 bg-black/25 px-4 py-3 text-sm font-medium capitalize text-white/70">
+              <div className="nexora-calendar-day-title border-b border-white/10 bg-black/25 px-4 py-3 text-sm font-medium capitalize text-white/70">
                 {format(parseISODate(selected), "EEEE, d MMMM", { locale: ru })}
               </div>
               {renderTimeGrid([selected])}
