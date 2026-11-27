@@ -14,6 +14,8 @@ const task: Task = {
   dueDate: "2026-12-01",
   scheduledDate: "2026-11-28",
   projectId: "project-1",
+  projectIds: ["project-1", "project-2"],
+  recurrenceRule: { frequency: "weekly", interval: 2, weekdays: [1, 3] },
   estimatedMinutes: 90,
   tags: ["работа", "отчёт"],
   contexts: ["офис"],
@@ -28,6 +30,8 @@ test("creates a reusable template without transient dates or task identity", () 
   assert.equal("dueDate" in template, false)
   assert.equal("scheduledDate" in template, false)
   assert.deepEqual(template.tags, task.tags)
+  assert.deepEqual(template.projectIds, task.projectIds)
+  assert.deepEqual(template.recurrenceRule, task.recurrenceRule)
 })
 
 test("builds a fresh inbox task from a template without reusing mutable arrays", () => {
@@ -39,4 +43,6 @@ test("builds a fresh inbox task from a template without reusing mutable arrays",
   assert.deepEqual(input.projectIds, ["project-1"])
   assert.notEqual(input.tags, template.tags)
   assert.notEqual(input.links, template.links)
+  assert.notEqual(input.projectIds, template.projectIds)
+  assert.notEqual(input.recurrenceRule?.weekdays, template.recurrenceRule?.weekdays)
 })
