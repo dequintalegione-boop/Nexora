@@ -10,6 +10,7 @@ import { createTaskRepository } from "./task-repository"
 import { createTaskService } from "./task-service"
 import { getTasksDueForAutomation, getTasksDueSoonForAutomation } from "./automations"
 import { TaskAutomationEventAdapter } from "./automation-event-adapter"
+import { createReminderTriggeredEventInput, type ReminderTriggeredInput } from "./reminder-events"
 import { CURRENT_SCHEMA_VERSION, migratePersistedData } from "./migrate"
 import type { TaskAutomationRule } from "./automations"
 import { buildNextTaskOccurrence, updateRecurrenceSeriesTasks } from "./task-logic"
@@ -117,6 +118,7 @@ type Store = Persisted & {
   resumeTimer: () => void
   stopTimer: () => string | null
   updateTimeSession: (id: string, patch: { startedAt?: string; endedAt?: string; title?: string }) => boolean
+  markReminderTriggered: (input: ReminderTriggeredInput) => boolean
   setTimerIntent: (taskId: string | null) => void
   addAutomationRule: (rule: Omit<TaskAutomationRule, "id" | "createdAt" | "updatedAt">) => string
   updateAutomationRule: (id: string, patch: Partial<TaskAutomationRule>) => void
@@ -1150,6 +1152,33 @@ export const useNexora = create<Store>()(
           })
         }
         return updated
+      },
+
+      markReminderTriggered: (input) => {
+        const task = get().tasks.find((item) => item.id === input.taskId)
+        const reminder = task?.reminders?.find((item) => item.id === input.reminderId)
+        if (!task || !reminder || !reminder.enabled || reminder.lastTriggeredAt) return false
+
+        const service = createStoreTaskService(
+          () => get().tasks,
+          (tasks) => set({ tasks }),
+          (status) => isDoneStatus(status, get().settings),
+        )
+        const updated = service.update(
+          task.id,
+          {
+            reminders: task.reminders?.map((item) =>
+              item.id === input.reminderId
+                ? { ...item, lastTriggeredAt: input.triggeredAt }
+                : item,
+            ),
+          },
+          { source: "system" },
+        )
+        if (!updated) return false
+
+        publishStoreTaskEvent(createReminderTriggeredEventInput(input))
+        return true
       },
 
       setTimerIntent: (taskId) => set({ timerIntent: taskId }),

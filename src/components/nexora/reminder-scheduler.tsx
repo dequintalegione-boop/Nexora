@@ -48,13 +48,13 @@ export function ReminderScheduler() {
           }
 
           const triggeredAt = new Date(now).toISOString()
-          useNexora.getState().updateTask(currentTask.id, {
-            reminders: currentTask.reminders?.map((reminder) =>
-              reminder.id === currentReminder.id
-                ? { ...reminder, lastTriggeredAt: triggeredAt }
-                : reminder,
-            ),
+          const marked = useNexora.getState().markReminderTriggered({
+            taskId: currentTask.id,
+            reminderId: currentReminder.id,
+            scheduledAt: item.scheduledAt,
+            triggeredAt,
           })
+          if (!marked) notification.close()
         } catch (error) {
           console.error("Не удалось показать напоминание Nexora:", error)
         }
