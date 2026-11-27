@@ -10,6 +10,7 @@ import { parseQuickTaskInput } from "@/lib/nexora/quick-task"
 import { createTaskFilterGroup, matchesTaskFilterGroup, type TaskFilterGroup } from "@/lib/nexora/task-filters"
 import { TaskFilterBuilder } from "./task-filter-builder"
 import { getKanbanColumns, getKanbanDropPatch, getKanbanTaskColumnIds } from "@/lib/nexora/kanban"
+import { buildTaskInputFromTemplate, createTaskTemplateFromTask } from "@/lib/nexora/task-templates"
 import type { KanbanGroupBy } from "@/lib/nexora/kanban"
 import { buildTaskInputFromTemplate, createTaskTemplateFromTask } from "@/lib/nexora/task-templates"
 
@@ -158,7 +159,12 @@ export function TasksPage() {
   const createFromTemplate = () => {
     const template = taskTemplates.find((item) => item.id === templateId)
     if (!template) return
-    const id = addTask(buildTaskInputFromTemplate(template))
+    const templateInput = buildTaskInputFromTemplate(template)
+    if (templateInput.projectId && !projects.some((project) => project.id === templateInput.projectId && !project.archived)) {
+      templateInput.projectId = undefined
+      templateInput.projectIds = []
+    }
+    const id = addTask(templateInput)
     setTaskId(id)
     setTemplateId("")
   }
