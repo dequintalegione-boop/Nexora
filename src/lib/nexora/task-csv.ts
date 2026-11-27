@@ -56,6 +56,7 @@ const TASK_FIELDS = [
   "repeat",
   "recurrenceRule",
   "recurrenceParentId",
+  "recurrenceOverride",
   "occurrenceDate",
   "occurrenceNumber",
   "recurrenceStartDate",
@@ -100,7 +101,7 @@ const OPTIONAL_STRING_FIELDS = [
 ] as const satisfies readonly (keyof Task)[]
 
 const NUMBER_FIELDS = ["estimatedMinutes", "estimateMinutes", "actualMinutes", "occurrenceNumber"] as const
-const BOOLEAN_FIELDS = ["allDay", "archived"] as const
+const BOOLEAN_FIELDS = ["allDay", "archived", "recurrenceOverride"] as const
 const STRING_ARRAY_FIELDS = ["projectIds", "dependsOn", "skippedOccurrences", "tags", "contexts"] as const
 const JSON_FIELDS = ["recurrenceRule", "reminders", "links", "history"] as const
 
