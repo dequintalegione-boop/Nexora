@@ -169,3 +169,26 @@ test("protects formula-like text even when it begins with whitespace", () => {
   assert.ok(csv.includes("\"'   =1+1\""))
   assert.equal(parseTasksCsv(csv).tasks[0].title, task.title)
 })
+
+
+test("rejects invalid date anchors, timezone names and nested reminder/recurrence values", () => {
+  const quote = (value) => '"' + String(value).replace(/"/g, '""') + '"'
+  const headers = ["id", "title", "status", "priority", "dueDate", "recurrenceRule", "reminders", "timezone"]
+  const rows = [
+    ["bad-date", "Bad date", "planned", "none", "2026-02-31", "", "", "Europe/Amsterdam"],
+    ["bad-rule", "Bad rule", "planned", "none", "", JSON.stringify({ frequency: "monthly", interval: 0, byMonth: [13] }), "", "Europe/Amsterdam"],
+    ["bad-reminder", "Bad reminder", "planned", "none", "", "", JSON.stringify([{ id: "r1", enabled: "yes" }]), "Europe/Amsterdam"],
+    ["bad-zone", "Bad timezone", "planned", "none", "", "", "", "Mars/Olympus"],
+  ]
+  const csv = [
+    headers.map(quote).join(","),
+    ...rows.map((row) => row.map(quote).join(",")),
+  ].join("\n")
+  const parsed = parseTasksCsv(csv)
+  assert.equal(parsed.tasks.length, 0)
+  assert.deepEqual(parsed.errors.map((error) => error.row), [2, 3, 4, 5])
+  assert.match(parsed.errors[0].message, /dueDate/)
+  assert.match(parsed.errors[1].message, /интервал/)
+  assert.match(parsed.errors[2].message, /reminders/)
+  assert.match(parsed.errors[3].message, /timezone/)
+})

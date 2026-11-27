@@ -302,6 +302,150 @@ function cellFor(row: string[], fieldIndexes: Map<keyof Task, number>, field: ke
     : value
 }
 
+function isValidDateOnly(value: string): boolean {
+  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+}
+
+function isValidDateTime(value: string): boolean {
+  return Number.isFinite(new Date(value).getTime())
+}
+
+function validateImportedTask(task: Record<string, unknown>): void {
+  for (const field of ["createdAt", "updatedAt", "startAt", "endAt", "recurrenceStartStartAt", "recurrenceStartEndAt", "archivedAt", "deletedAt", "completedAt"] as const) {
+    const value = task[field]
+    if (typeof value === "string" && value && !isValidDateTime(value)) {
+      throw new Error(`Поле «${field}» содержит некорректную дату или время.`)
+    }
+  }
+
+  for (const field of ["dueDate", "scheduledDate", "occurrenceDate", "recurrenceStartDate", "recurrenceStartScheduledDate", "recurrenceStartDueDate"] as const) {
+    const value = task[field]
+    if (typeof value === "string" && value && !isValidDateOnly(value)) {
+      throw new Error(`Поле «${field}» должно иметь корректный формат YYYY-MM-DD.`)
+    }
+  }
+
+  if (typeof task.timezone === "string" && task.timezone) {
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: task.timezone }).format(0)
+    } catch {
+      throw new Error("Поле «timezone» содержит неизвестный часовой пояс.")
+    }
+  }
+
+  for (const field of ["estimatedMinutes", "estimateMinutes", "actualMinutes"] as const) {
+    const value = task[field]
+    if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value < 0)) {
+      throw new Error(`Поле «${field}» должно быть неотрицательным числом.`)
+    }
+  }
+  if (task.occurrenceNumber !== undefined &&
+      (typeof task.occurrenceNumber !== "number" || !Number.isInteger(task.occurrenceNumber) || task.occurrenceNumber < 1)) {
+    throw new Error("Поле «occurrenceNumber» должно быть положительным целым числом.")
+  }
+
+  if (task.repeat !== undefined && task.repeat !== "daily" && task.repeat !== "weekly") {
+    throw new Error("Поле «repeat» содержит неподдерживаемый тип повторения.")
+  }
+
+  const rule = task.recurrenceRule
+  if (rule !== undefined) {
+    if (typeof rule !== "object" || rule === null || Array.isArray(rule)) {
+      throw new Error("Поле «recurrenceRule» должно быть JSON-объектом.")
+    }
+    const value = rule as Record<string, unknown>
+    if (!["daily", "weekly", "monthly", "yearly"].includes(String(value.frequency))) {
+      throw new Error("Правило повторения содержит неизвестную частоту.")
+    }
+    if (!Number.isInteger(value.interval) || (value.interval as number) < 1) {
+      throw new Error("Интервал повторения должен быть положительным целым числом.")
+    }
+    if (value.count !== undefined && (!Number.isInteger(value.count) || (value.count as number) < 1)) {
+      throw new Error("COUNT в правиле повторения должен быть положительным целым числом.")
+    }
+    if (value.until !== undefined && (typeof value.until !== "string" || !isValidDateOnly(value.until))) {
+      throw new Error("UNTIL в правиле повторения должен быть корректной датой YYYY-MM-DD.")
+    }
+    if (value.weekStart !== undefined && (!Number.isInteger(value.weekStart) || (value.weekStart as number) < 0 || (value.weekStart as number) > 6)) {
+      throw new Error("WKST в правиле повторения должен быть числом от 0 до 6.")
+    }
+    for (const field of ["weekdays", "byMonthDay", "byMonth"] as const) {
+      const items = value[field]
+      if (items !== undefined && (!Array.isArray(items) || !items.every(Number.isInteger))) {
+        throw new Error(`Поле «${field}» правила повторения должно быть массивом целых чисел.`)
+      }
+    }
+    if (value.weekdays !== undefined && !(value.weekdays as number[]).every((day) => day >= 0 && day <= 6)) {
+      throw new Error("Дни недели в правиле повторения должны быть от 0 до 6.")
+    }
+    if (value.byMonth !== undefined && !(value.byMonth as number[]).every((month) => month >= 1 && month <= 12)) {
+      throw new Error("BYMONTH должен содержать месяцы от 1 до 12.")
+    }
+    if (value.byMonthDay !== undefined && !(value.byMonthDay as number[]).every((day) => day !== 0 && Math.abs(day) <= 31)) {
+      throw new Error("BYMONTHDAY должен содержать значения от -31 до -1 или от 1 до 31.")
+    }
+    if (value.byDay !== undefined) {
+      if (!Array.isArray(value.byDay) || !value.byDay.every((item) =>
+        typeof item === "object" && item !== null && !Array.isArray(item) &&
+        Number.isInteger((item as Record<string, unknown>).weekday) &&
+        ((item as Record<string, unknown>).weekday as number) >= 0 &&
+        ((item as Record<string, unknown>).weekday as number) <= 6 &&
+        ((item as Record<string, unknown>).ordinal === undefined ||
+          (Number.isInteger((item as Record<string, unknown>).ordinal) &&
+            (item as Record<string, unknown>).ordinal !== 0 &&
+            Math.abs((item as Record<string, unknown>).ordinal as number) <= 5))
+      )) {
+        throw new Error("BYDAY содержит некорректный день недели или порядковый номер.")
+      }
+    }
+    if (value.excludeDates !== undefined &&
+        (!Array.isArray(value.excludeDates) || !value.excludeDates.every((item) => typeof item === "string" && isValidDateOnly(item)))) {
+      throw new Error("EXDATE должен содержать корректные даты YYYY-MM-DD.")
+    }
+  }
+
+  const reminders = task.reminders
+  if (reminders !== undefined) {
+    if (!Array.isArray(reminders) || !reminders.every((item) => {
+      if (typeof item !== "object" || item === null || Array.isArray(item)) return false
+      const reminder = item as Record<string, unknown>
+      return typeof reminder.id === "string" && reminder.id.trim().length > 0 &&
+        typeof reminder.enabled === "boolean" &&
+        (reminder.minutesBefore === undefined ||
+          (typeof reminder.minutesBefore === "number" && Number.isFinite(reminder.minutesBefore) && reminder.minutesBefore >= 0)) &&
+        (reminder.at === undefined || (typeof reminder.at === "string" && isValidDateTime(reminder.at))) &&
+        (reminder.anchor === undefined || reminder.anchor === "start" || reminder.anchor === "due") &&
+        (reminder.lastTriggeredAt === undefined ||
+          (typeof reminder.lastTriggeredAt === "string" && isValidDateTime(reminder.lastTriggeredAt)))
+    })) {
+      throw new Error("Массив reminders содержит некорректное напоминание.")
+    }
+  }
+
+  const links = task.links
+  if (links !== undefined && (!Array.isArray(links) || !links.every((item) =>
+    typeof item === "object" && item !== null && !Array.isArray(item) &&
+    typeof (item as Record<string, unknown>).id === "string" &&
+    Boolean(((item as Record<string, unknown>).id as string).trim()) &&
+    typeof (item as Record<string, unknown>).title === "string" &&
+    typeof (item as Record<string, unknown>).url === "string"
+  ))) {
+    throw new Error("Массив links содержит некорректную ссылку.")
+  }
+
+  const history = task.history
+  if (history !== undefined && (!Array.isArray(history) || !history.every((item) =>
+    typeof item === "object" && item !== null && !Array.isArray(item) &&
+    typeof (item as Record<string, unknown>).at === "string" &&
+    isValidDateTime((item as Record<string, unknown>).at as string) &&
+    typeof (item as Record<string, unknown>).change === "string"
+  ))) {
+    throw new Error("Массив history содержит некорректную запись.")
+  }
+}
+
 function buildTask(
   row: string[],
   fieldIndexes: Map<keyof Task, number>,
@@ -349,6 +493,7 @@ function buildTask(
     }
   }
 
+  validateImportedTask(task)
   return task as Task
 }
 
