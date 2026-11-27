@@ -74,6 +74,7 @@ const sampleData: Persisted = {
     widgetOrder: ["tasks", "habits"],
     hiddenWidgets: ["goals"],
     notificationsEnabled: true,
+    pomodoro: { focusMinutes: 30, shortBreakMinutes: 7, longBreakMinutes: 20, cyclesBeforeLongBreak: 3, autoStartNext: true },
     taskStatuses: [{ id: "custom_review", label: "На проверке", category: "open", order: 6, builtin: false }],
     taskPriorities: [{ id: "custom_urgent", label: "Срочно", order: 5, builtin: false }],
   },
