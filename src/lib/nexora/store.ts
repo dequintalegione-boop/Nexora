@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware"
 import { STATUS_LABEL, WIDGETS } from "./copy"
 import { addDays, isoDate } from "./dates"
 import { buildSeed } from "./seed"
-import { buildNextTaskOccurrence, canAddTaskDependency, canSetTaskParent } from "./task-logic"
+import { buildNextTaskOccurrence, canAddTaskDependency, canSetTaskParent, updateRecurrenceSeriesTasks } from "./task-logic"
 import type {
   ActiveTimer,
   DailyEntry,
@@ -229,35 +229,14 @@ export const useNexora = create<Store>()(
         }),
 
       updateRecurrenceSeries: (id, rule) => {
-        const current = get().tasks.find((task) => task.id === id)
-        if (!current || current.deletedAt || current.archived) return 0
-        const seriesId = current.recurrenceParentId ?? current.id
         const now = nowISO()
-        let updated = 0
-
-        set((state) => ({
-          tasks: state.tasks.map((task) => {
-            const belongsToSeries =
-              task.id === seriesId || task.recurrenceParentId === seriesId
-            const isEditableOccurrence =
-              task.id === seriesId ||
-              (task.status !== "done" && task.status !== "cancelled" && !task.archived && !task.deletedAt)
-            if (!belongsToSeries || !isEditableOccurrence) return task
-
-            updated += 1
-            return {
-              ...task,
-              recurrenceRule: rule ? { ...rule, weekdays: rule.weekdays ? [...rule.weekdays] : undefined } : undefined,
-              repeat: rule?.frequency === "daily" || rule?.frequency === "weekly" ? rule.frequency : undefined,
-              updatedAt: now,
-              history: [
-                ...(task.history ?? []),
-                { at: now, change: "Правило повторения обновлено для всей серии" },
-              ].slice(-100),
-            }
-          }),
-        }))
-        return updated
+        let updatedCount = 0
+        set((state) => {
+          const result = updateRecurrenceSeriesTasks(state.tasks, id, rule, now)
+          updatedCount = result.updatedCount
+          return { tasks: result.tasks }
+        })
+        return updatedCount
       },
 
       skipTaskOccurrence: (id) => {
