@@ -23,15 +23,6 @@ export function ReminderScheduler() {
         const currentReminder = currentTask?.reminders?.find((reminder) => reminder.id === item.reminder.id)
         if (!currentTask || !currentReminder || currentReminder.lastTriggeredAt) continue
 
-        const triggeredAt = new Date(now).toISOString()
-        useNexora.getState().updateTask(currentTask.id, {
-          reminders: currentTask.reminders?.map((reminder) =>
-            reminder.id === currentReminder.id
-              ? { ...reminder, lastTriggeredAt: triggeredAt }
-              : reminder
-          ),
-        })
-
         try {
           const notification = new Notification(currentTask.title, {
             body: currentTask.description?.trim() || "Время заняться задачей",
@@ -41,6 +32,15 @@ export function ReminderScheduler() {
             window.focus()
             notification.close()
           }
+
+          const triggeredAt = new Date(now).toISOString()
+          useNexora.getState().updateTask(currentTask.id, {
+            reminders: currentTask.reminders?.map((reminder) =>
+              reminder.id === currentReminder.id
+                ? { ...reminder, lastTriggeredAt: triggeredAt }
+                : reminder
+            ),
+          })
         } catch (error) {
           console.error("Не удалось показать напоминание Nexora:", error)
         }
