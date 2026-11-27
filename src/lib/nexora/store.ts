@@ -167,6 +167,8 @@ export const useNexora = create<Store>()(
           description: input.description,
           dueDate: input.dueDate,
           scheduledDate: input.scheduledDate,
+          startAt: input.startAt,
+          endAt: input.endAt,
           projectId: input.projectId,
           directionId: input.directionId,
           estimatedMinutes: input.estimatedMinutes,
