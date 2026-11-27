@@ -83,6 +83,13 @@ export function parseQuickTaskInput(input: string, today: string): QuickTaskDraf
     return prefix
   })
 
+  remaining = remaining.replace(/(^|\s)через\s+(\d{1,2})\s+(неделя|недели|недель)(?=\s|$)/giu, (match, prefix: string, amountText: string) => {
+    const amount = Number(amountText)
+    if (amount < 1 || amount > 52) return match
+    scheduledDate = addCalendarDays(today, amount * 7)
+    return prefix
+  })
+
   const dateTokens: Array<[RegExp, number]> = [
     [/(^|\s)послезавтра(?=\s|$)/giu, 2],
     [/(^|\s)завтра(?=\s|$)/giu, 1],
