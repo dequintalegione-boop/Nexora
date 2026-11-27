@@ -49,3 +49,25 @@ test("legacy rename map still applied when catalog is absent", () => {
   assert.equal(defs.find((d) => d.id === "inbox")?.label, "Inbox")
   assert.equal(defs.find((d) => d.id === "done")?.label, "Finished")
 })
+
+test("getStatusSelectOptions includes current when it is hidden", async () => {
+  const { getStatusSelectOptions } = await import("./copy.ts")
+  const defs = defaultTaskStatuses().map((s) =>
+    s.id === "waiting" ? { ...s, hidden: true } : s,
+  )
+  const settings = { taskStatuses: defs } as Settings
+  const opts = getStatusSelectOptions(settings, "waiting")
+  assert.ok(opts.some((s) => s.id === "waiting"))
+  assert.ok(!getActiveTaskStatuses(settings).some((s) => s.id === "waiting"))
+})
+
+test("getFallbackStatusId prefers inbox among open statuses", async () => {
+  const { getFallbackStatusId } = await import("./copy.ts")
+  const settings = { taskStatuses: defaultTaskStatuses() } as Settings
+  assert.equal(getFallbackStatusId(settings, "custom_x"), "inbox")
+  const withoutInbox = defaultTaskStatuses().filter((s) => s.id !== "inbox")
+  assert.equal(
+    getFallbackStatusId({ taskStatuses: withoutInbox } as Settings, "waiting"),
+    "planned",
+  )
+})
