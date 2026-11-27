@@ -124,8 +124,10 @@ export function buildNextTaskOccurrence(task: Task, now: string): Omit<Task, "id
   if (rule.count != null && occurrenceNumber > rule.count) return null
 
   const baseDate = task.recurrenceStartDate ?? task.occurrenceDate ?? task.scheduledDate ?? task.dueDate ?? now.slice(0, 10)
-  const weeklyDays = rule.frequency === "weekly" && rule.weekdays?.length
-    ? rule.weekdays
+  const weeklyDays = rule.frequency === "weekly"
+    ? (rule.weekdays ?? []).filter(
+        (weekday) => Number.isInteger(weekday) && weekday >= 0 && weekday <= 6
+      )
     : undefined
   const nextDate = weeklyDays
     ? getWeeklyOccurrenceDate(baseDate, rule.interval, weeklyDays, occurrenceNumber - 1)
