@@ -6,6 +6,7 @@ import {
   canSetTaskParent,
   getDependencyState,
   getTaskChildren,
+  updateRecurrenceSeriesTasks,
 } from "../src/lib/nexora/task-logic.ts"
 
 const task = (id, patch = {}) => ({
@@ -86,4 +87,88 @@ test("recurrence respects count and until limits", () => {
     recurrenceRule: { frequency: "daily", interval: 1, until: "2026-01-10" },
   })
   assert.equal(buildNextTaskOccurrence(dateLimited, "2026-01-10T12:00:00.000Z"), null)
+})
+
+test("weekly recurrence supports multiple selected weekdays", () => {
+  const monday = task("series", {
+    scheduledDate: "2026-01-05",
+    recurrenceRule: { frequency: "weekly", interval: 1, weekdays: [1, 3, 5] },
+  })
+  const wednesday = buildNextTaskOccurrence(monday, "2026-01-05T12:00:00.000Z")
+  assert.equal(wednesday?.occurrenceDate, "2026-01-07")
+  assert.equal(wednesday?.scheduledDate, "2026-01-07")
+
+  const friday = buildNextTaskOccurrence({ ...wednesday, id: "wednesday" }, "2026-01-07T12:00:00.000Z")
+  assert.equal(friday?.occurrenceDate, "2026-01-09")
+
+  const nextMonday = buildNextTaskOccurrence({ ...friday, id: "friday" }, "2026-01-09T12:00:00.000Z")
+  assert.equal(nextMonday?.occurrenceDate, "2026-01-12")
+})
+
+test("weekly recurrence applies the interval to calendar weeks", () => {
+  const first = task("series", {
+    occurrenceDate: "2026-01-05",
+    recurrenceRule: { frequency: "weekly", interval: 2, weekdays: [1, 3] },
+  })
+  const wednesday = buildNextTaskOccurrence(first, "2026-01-05T12:00:00.000Z")
+  assert.equal(wednesday?.occurrenceDate, "2026-01-07")
+
+  const nextCycle = buildNextTaskOccurrence({ ...wednesday, id: "wednesday" }, "2026-01-07T12:00:00.000Z")
+  assert.equal(nextCycle?.occurrenceDate, "2026-01-19")
+})
+
+test("weekly recurrence ignores invalid weekday values and falls back safely", () => {
+  const first = task("series", {
+    occurrenceDate: "2026-01-05",
+    recurrenceRule: { frequency: "weekly", interval: 1, weekdays: [8, -1] },
+  })
+  const next = buildNextTaskOccurrence(first, "2026-01-05T12:00:00.000Z")
+  assert.equal(next?.occurrenceDate, "2026-01-12")
+})
+
+test("skipping an occurrence is carried forward to the next task in the series", () => {
+  const first = task("series", {
+    occurrenceDate: "2026-01-05",
+    recurrenceRule: { frequency: "weekly", interval: 1, weekdays: [1, 3] },
+    skippedOccurrences: ["2025-12-29"],
+  })
+  const next = buildNextTaskOccurrence(first, "2026-01-05T12:00:00.000Z")
+  assert.equal(next?.occurrenceDate, "2026-01-07")
+  assert.deepEqual(next?.skippedOccurrences, ["2025-12-29"])
+})
+
+test("weekly weekday recurrence shifts scheduled date and deadline by the actual day offset", () => {
+  const first = task("series", {
+    occurrenceDate: "2026-01-05",
+    scheduledDate: "2026-01-05",
+    dueDate: "2026-01-06",
+    recurrenceRule: { frequency: "weekly", interval: 1, weekdays: [1, 3, 5] },
+  })
+  const next = buildNextTaskOccurrence(first, "2026-01-05T12:00:00.000Z")
+  assert.equal(next?.occurrenceDate, "2026-01-07")
+  assert.equal(next?.scheduledDate, "2026-01-07")
+  assert.equal(next?.dueDate, "2026-01-08")
+})
+
+test("series rule updates affect the root and future active occurrences only", () => {
+  const tasks = [
+    task("root", { recurrenceRule: { frequency: "weekly", interval: 1 } }),
+    task("future-a", { recurrenceParentId: "root", occurrenceNumber: 2 }),
+    task("future-b", { recurrenceParentId: "root", occurrenceNumber: 3, status: "in_progress" }),
+    task("completed", { recurrenceParentId: "root", occurrenceNumber: 1, status: "done" }),
+    task("skipped", { recurrenceParentId: "root", occurrenceNumber: 4, status: "cancelled" }),
+    task("archived", { recurrenceParentId: "root", occurrenceNumber: 5, archived: true }),
+    task("other"),
+  ]
+  const rule = { frequency: "weekly", interval: 2, weekdays: [1, 3] }
+  const result = updateRecurrenceSeriesTasks(tasks, "future-a", rule, "2026-01-10T12:00:00.000Z")
+
+  assert.equal(result.updatedCount, 3)
+  assert.deepEqual(result.tasks.find((item) => item.id === "root")?.recurrenceRule, rule)
+  assert.deepEqual(result.tasks.find((item) => item.id === "future-a")?.recurrenceRule, rule)
+  assert.deepEqual(result.tasks.find((item) => item.id === "future-b")?.recurrenceRule, rule)
+  assert.equal(result.tasks.find((item) => item.id === "completed")?.recurrenceRule, undefined)
+  assert.equal(result.tasks.find((item) => item.id === "skipped")?.recurrenceRule, undefined)
+  assert.equal(result.tasks.find((item) => item.id === "archived")?.recurrenceRule, undefined)
+  assert.equal(result.tasks.find((item) => item.id === "other")?.recurrenceRule, undefined)
 })
