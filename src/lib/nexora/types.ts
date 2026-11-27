@@ -1,3 +1,5 @@
+import type { TaskAutomationRule, TaskAutomationRun } from "./automations"
+
 export type ID = string
 
 export type TaskStatus =
@@ -230,4 +232,6 @@ export interface Persisted {
   sessions: TimeSession[]
   activeTimer: ActiveTimer | null
   settings: Settings
+  automationRules?: TaskAutomationRule[]
+  automationRuns?: TaskAutomationRun[]
 }
