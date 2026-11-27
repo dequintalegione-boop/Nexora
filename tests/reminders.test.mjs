@@ -73,7 +73,9 @@ test("creates a metadata-only reminder.triggered domain event", () => {
   assert.equal(typeof event.metadata.scheduledAt, "string")
   assert.equal("title" in event, false)
   assert.equal("description" in event, false)
-  assert.equal("after" in event, false)
+  assert.equal(event.before, undefined)
+  assert.equal(event.after, undefined)
+  assert.deepEqual(Object.keys(event.metadata).sort(), ["reminderId", "scheduledAt", "taskId"])
 })
 
 test("reminder delivery event IDs are deterministic and deduplicate delivery", () => {
