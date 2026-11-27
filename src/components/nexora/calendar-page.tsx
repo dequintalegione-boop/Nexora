@@ -511,7 +511,7 @@ export function CalendarPage() {
                   />
                 ))}
 
-                {timed.map(({ task, start, end, rawStart, rawEnd }) => {
+                {timed.map(({ task, rawStart, rawEnd }) => {
                   const layoutItem = layoutById.get(task.id)
                   if (!layoutItem) return null
                   const previewStart = resizeDraft?.taskId === task.id ? resizeDraft.previewStart : rawStart
