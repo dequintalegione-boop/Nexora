@@ -115,6 +115,8 @@ export function TasksPage() {
       })
   }, [tasks, taskViewItems, filter, priorityFilter, projectFilter, search, view, quickFilter, today, weekLimit, sortBy, advancedFilter])
 
+  const isRecurrenceInstance = (task: TaskViewItem) => Boolean(task.recurrenceParentId && task.occurrenceDate)
+
   const openTask = (task: TaskViewItem) => {
     if (task.virtualOccurrence && task.recurrenceParentId && task.occurrenceDate) {
       const occurrence: TaskOccurrenceContext = {
@@ -459,7 +461,7 @@ export function TasksPage() {
                       onClick={() => openTask(task)}
                     >
                       <div className="font-medium">{task.title}</div>
-                      {task.virtualOccurrence && <span className="mt-1 block text-[10px] text-teal-300">Повтор · {task.occurrenceDate}</span>}
+                      {isRecurrenceInstance(task) && <span className="mt-1 block text-[10px] text-teal-300">Повтор · {task.occurrenceDate}</span>}
                       <div className="mt-1 flex flex-wrap gap-1">
                         <Badge priority={task.priority}>{priorityLabels[task.priority]}</Badge>
                         {task.dueDate && <span className="text-xs text-muted">до {task.dueDate}</span>}
@@ -484,8 +486,8 @@ export function TasksPage() {
               {filtered.map((task) => (
                 <tr key={task.id} className="border-t border-white/5 hover:bg-white/[0.02]" onClick={() => openTask(task)}>
                   <td className="p-2" onClick={(e) => e.stopPropagation()}>
-                    {task.virtualOccurrence
-                      ? <span className="text-xs text-teal-300" title="Виртуальный экземпляр повторения">↻</span>
+                    {isRecurrenceInstance(task)
+                      ? <span className="text-xs text-teal-300" title={task.virtualOccurrence ? "Виртуальный экземпляр повторения" : "Сохранённый экземпляр повторения"}>↻</span>
                       : <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} />}
                   </td>
                   {taskTableColumns.map((col) => {
@@ -493,7 +495,7 @@ export function TasksPage() {
                       title: (
                         <span className="inline-flex flex-wrap items-center gap-2">
                           {task.title}
-                          {task.virtualOccurrence && <span className="text-[10px] text-teal-300">Повтор · {task.occurrenceDate}</span>}
+                          {isRecurrenceInstance(task) && <span className="text-[10px] text-teal-300">Повтор · {task.occurrenceDate}</span>}
                         </span>
                       ),
                       status: task.virtualOccurrence ? (statusLabels[task.status] ?? task.status) : (
@@ -534,7 +536,7 @@ export function TasksPage() {
               </Select>}
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">{task.title}</div>
-                {task.virtualOccurrence && <div className="text-[10px] text-teal-300">Повтор · {task.occurrenceDate}</div>}
+                {isRecurrenceInstance(task) && <div className="text-[10px] text-teal-300">Повтор · {task.occurrenceDate}</div>}
                 {task.dueDate && <div className="text-xs text-muted">до {task.dueDate}</div>}
               </div>
               <div className="flex items-center gap-2">
