@@ -37,3 +37,13 @@ export function getCalendarDropPatch(task: Task, day: string, startMinutes: numb
     allDay: false,
   }
 }
+
+/** Move a task to a date cell, retaining its time when it has a time block. */
+export function getCalendarDayDropPatch(task: Task, day: string): Partial<Task> {
+  const time = getCalendarTaskTime(task)
+  if (time && !task.allDay) {
+    const [hours, minutes] = time.split(":").map(Number)
+    return getCalendarDropPatch(task, day, hours * 60 + minutes)
+  }
+  return { scheduledDate: day }
+}
