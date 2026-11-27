@@ -3,7 +3,6 @@ import {
   useCallback,
   type ButtonHTMLAttributes,
   type HTMLAttributes,
-  type MouseEvent,
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
@@ -16,7 +15,7 @@ type CardProps = { className?: string; children: ReactNode; lift?: boolean } & H
 /** Стеклянная карточка. Подсветка следует за курсором через --mx/--my. */
 export function Card({ className, children, lift, onMouseMove, ...props }: CardProps) {
   const handleMove = useCallback(
-    (event: MouseEvent<HTMLDivElement>) => {
+    (event: React.MouseEvent<HTMLDivElement>) => {
       const el = event.currentTarget
       const rect = el.getBoundingClientRect()
       el.style.setProperty("--mx", `${event.clientX - rect.left}px`)

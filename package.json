@@ -11,7 +11,7 @@
     "build": "node scripts/with-app-env.mjs vite build",
     "build:dev": "node scripts/with-app-env.mjs vite build --mode development",
     "preview": "node scripts/with-app-env.mjs vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --project tsconfig.app.json --noEmit && tsc --project tsconfig.node.json --noEmit",
     "test": "node --experimental-strip-types --test",
     "lint": "eslint .",
     "format": "prettier --write ."

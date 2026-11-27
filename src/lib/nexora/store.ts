@@ -36,7 +36,7 @@ export function defaultSettings(): Settings {
   return {
     initialized: false,
     theme: "dark",
-    accent: "#2dd4bf",
+    accent: "#3ddc97",
     displayName: "",
     weekStartsOn: 1,
     widgetOrder: WIDGETS.map((w) => w.id),

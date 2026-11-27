@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type MouseEvent } from "react"
+import { useMemo, useRef, useState } from "react"
 import { cn } from "@/lib/cn"
 
 export interface ChartPoint {
@@ -48,7 +48,7 @@ export function ActivityChart({ data, unit = "задач" }: { data: ChartPoint[
   const activePoint = geometry.pts[active]
   const activeData = data[active]
 
-  const handleMove = (event: MouseEvent<HTMLDivElement>) => {
+  const handleMove = (event: React.MouseEvent<HTMLDivElement>) => {
     const box = boxRef.current
     if (!box || data.length === 0) return
     const rect = box.getBoundingClientRect()
@@ -127,6 +127,7 @@ export function ActivityChart({ data, unit = "задач" }: { data: ChartPoint[
         />
       </svg>
 
+      {/* Маркеры — обычный HTML, чтобы не искажались при растяжении */}
       {geometry.pts.map((p, i) => (
         <span
           key={i}
