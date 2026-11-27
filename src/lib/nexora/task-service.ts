@@ -45,15 +45,19 @@ function sameValue(left: unknown, right: unknown): boolean {
  * domain events are published; event handlers can therefore read committed state.
  */
 export class TaskService {
+  private readonly repository: TaskRepository
+  private readonly eventBus: TaskEventBus
   private readonly now: () => string
   private readonly createId: (prefix: string) => string
   private readonly isDoneStatus: (status: TaskStatus) => boolean
 
   constructor(
-    private readonly repository: TaskRepository,
-    private readonly eventBus: TaskEventBus,
+    repository: TaskRepository,
+    eventBus: TaskEventBus,
     options: TaskServiceOptions = {},
   ) {
+    this.repository = repository
+    this.eventBus = eventBus
     this.now = options.now ?? (() => new Date().toISOString())
     this.createId = options.createId ?? createDefaultId
     this.isDoneStatus = options.isDoneStatus ?? ((status) => status === "done")
