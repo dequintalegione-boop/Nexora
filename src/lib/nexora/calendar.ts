@@ -195,6 +195,28 @@ export function getCalendarSessionRange(
 }
 
 
+
+/** Calculate a readable pixels-per-hour value that fits the visible time range into a planner viewport. */
+export function getCalendarFitPixelsPerHour(
+  containerHeight: number,
+  fixedHeight: number,
+  startHour: number,
+  endHour: number,
+): number | null {
+  if (
+    !Number.isFinite(containerHeight) ||
+    !Number.isFinite(fixedHeight) ||
+    !Number.isFinite(startHour) ||
+    !Number.isFinite(endHour) ||
+    endHour <= startHour
+  ) return null
+  const hours = endHour - startHour
+  const availableHeight = containerHeight - fixedHeight
+  const pixelsPerHour = Math.floor(availableHeight / hours)
+  if (!Number.isFinite(pixelsPerHour) || pixelsPerHour < 20) return null
+  return Math.min(132, pixelsPerHour)
+}
+
 /** Convert a pointer position inside a day column to the nearest visible time slot. */
 export function getCalendarDropMinutes(
   clientY: number,
