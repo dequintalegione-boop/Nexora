@@ -6,7 +6,7 @@ concurrency:
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feature/quick-task-relative-dates]
 
 permissions:
   contents: read
