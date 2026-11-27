@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { getCalendarDayDropPatch, getCalendarDropPatch, getCalendarTaskTime } from "./calendar.ts"
+import { getCalendarCreatePatch, getCalendarDayDropPatch, getCalendarDropPatch, getCalendarResizePatch, getCalendarTaskTime, layoutCalendarEvents } from "./calendar.ts"
 import type { Task } from "./types.ts"
 
 const task: Task = {
@@ -37,6 +37,58 @@ test("moving a timed task from the month view keeps its clock time", () => {
     scheduledDate: "2026-11-29",
     startAt: "2026-11-29T09:00",
     endAt: "2026-11-29T10:30",
+    allDay: false,
+  })
+})
+
+
+
+test("overlapping calendar events are laid out side by side", () => {
+  const layout = layoutCalendarEvents([
+    { id: "a", start: 9 * 60, end: 12 * 60 },
+    { id: "b", start: 10 * 60, end: 11 * 60 },
+    { id: "c", start: 11 * 60, end: 13 * 60 },
+  ])
+  assert.equal(layout.length, 3)
+  assert.deepEqual(layout.map((item) => [item.id, item.column, item.columns]), [
+    ["a", 0, 2],
+    ["b", 1, 2],
+    ["c", 1, 2],
+  ])
+})
+
+test("three events which overlap at the same time receive three columns", () => {
+  const layout = layoutCalendarEvents([
+    { id: "a", start: 9 * 60, end: 11 * 60 },
+    { id: "b", start: 9 * 60 + 15, end: 10 * 60 + 15 },
+    { id: "c", start: 9 * 60 + 30, end: 10 * 60 + 30 },
+  ])
+  assert.deepEqual(layout.map((item) => item.columns), [3, 3, 3])
+  layout.forEach((item, index) => assert.ok(Math.abs(item.leftPercent - [0, 100 / 3, 200 / 3][index]) < 1e-9))
+})
+
+test("adjacent calendar events can reuse the same full-width column", () => {
+  const layout = layoutCalendarEvents([
+    { id: "first", start: 8 * 60, end: 9 * 60 },
+    { id: "second", start: 9 * 60, end: 10 * 60 },
+  ])
+  assert.deepEqual(layout.map((item) => [item.column, item.columns, item.widthPercent]), [
+    [0, 1, 100],
+    [0, 1, 100],
+  ])
+})
+
+test("calendar create and resize patches preserve a minimum 15-minute duration", () => {
+  assert.deepEqual(getCalendarCreatePatch("2026-11-28", 8 * 60 + 7), {
+    scheduledDate: "2026-11-28",
+    startAt: "2026-11-28T08:00",
+    endAt: "2026-11-28T09:00",
+    allDay: false,
+  })
+  assert.deepEqual(getCalendarResizePatch(task, "2026-11-28", 8 * 60, 8 * 60), {
+    scheduledDate: "2026-11-28",
+    startAt: "2026-11-28T08:00",
+    endAt: "2026-11-28T08:15",
     allDay: false,
   })
 })
