@@ -168,6 +168,7 @@ export function CalendarPage() {
   const addTask = useNexora((s) => s.addTask)
   const updateTask = useNexora((s) => s.updateTask)
   const setTaskId = useUI((s) => s.setTaskId)
+  const setTaskOccurrence = useUI((s) => s.setTaskOccurrence)
   const priorityLabels = getTaskPriorityLabels(settings)
   const statusDefinitions = getTaskStatusDefinitions(settings).filter((status) => !status.hidden)
 
@@ -346,8 +347,16 @@ export function CalendarPage() {
     setCursor({ year: date.getFullYear(), month: date.getMonth() })
   }
 
-  const onEventClick = (task: CalendarTask) =>
-    setTaskId(task.virtualOccurrence ? task.recurrenceSeriesId ?? task.id : task.id)
+  const onEventClick = (task: CalendarTask) => {
+    if (task.virtualOccurrence && task.recurrenceParentId && task.occurrenceDate) {
+      const seriesId = task.recurrenceSeriesId ?? task.recurrenceParentId
+      setTaskId(seriesId)
+      setTaskOccurrence({ seriesId, occurrenceDate: task.occurrenceDate, task })
+      return
+    }
+    setTaskOccurrence(null)
+    setTaskId(task.id)
+  }
 
   const eventChipClass = (task: CalendarTask, kind: "scheduled" | "due") =>
     cn(
