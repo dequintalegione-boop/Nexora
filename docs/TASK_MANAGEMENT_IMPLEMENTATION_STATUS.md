@@ -50,7 +50,7 @@
 
 ## Автоматические тесты
 
-Покрыты: TaskRepository / TaskService / TaskEvents (repository ID validation, post-commit events, dedupe, nested dispatch, handler isolation, CRUD lifecycle, relation integrity, timer/Pomodoro event contract), шаблоны, автоматизации (AND/OR, `task.due`, `task.due_soon`), миграции схемы, каталог статусов (в т.ч. select options и fallback), напоминания, фильтры, Kanban, календарь, быстрый ввод (weekdays/estimate/project/status/custom status id), повторения, Pomodoro (длительности и последовательность циклов), корректировка time sessions, JSON-бэкап (новый и старый формат, round-trip UI и данных, отказ на некорректном/дублированном/будущем формате).
+Покрыты: TaskRepository / TaskService / TaskEvents (repository ID validation, post-commit events, committed-change publishing, dedupe, nested dispatch, handler isolation, safe snapshots, custom completed statuses, no-op updates, single moved event, CRUD lifecycle, relation integrity, timer/Pomodoro event contract), шаблоны, автоматизации (AND/OR, `task.due`, `task.due_soon`), миграции схемы, каталог статусов (в т.ч. select options и fallback), напоминания, фильтры, Kanban, календарь, быстрый ввод (weekdays/estimate/project/status/custom status id), повторения, Pomodoro (длительности и последовательность циклов), корректировка time sessions, JSON-бэкап (новый и старый формат, round-trip UI и данных, отказ на некорректном/дублированном/будущем формате).
 
 CI: unit-тесты, TypeScript typecheck, production build.
 
@@ -61,7 +61,9 @@ CI: unit-тесты, TypeScript typecheck, production build.
   - `TaskService` централизует создание, обновление, архивирование, восстановление, перенос в корзину, окончательное удаление, смену родителя и зависимостей; store использует сервис для редактирования и перечисленных CRUD/relationship-команд;
   - `TaskEvents` — типизированная локальная шина с eventId, occurredAt, entityId, before/after, source, correlationId и безопасными метаданными; события CRUD публикуются после repository commit;
   - дедупликация по eventId (ограниченное окно 5 000 событий), очередь вложенных публикаций и изоляция ошибок подписчиков;
-  - создание, смена статуса, completion и skip повторения сохраняют текущую атомарную логику автоматизаций/повторений в store и публикуют соответствующие события после записи.
+  - создание, смена статуса, completion и skip повторения сохраняют текущую атомарную логику автоматизаций/повторений в store и публикуют соответствующие события после записи;
+  - для внешних атомарных транзакций есть `publishCommittedChange`: классификация изменений, completion/uncompletion и correlationId остаются единообразными; материализованный следующий экземпляр после completion/skip публикуется как `task.created`;
+  - составные изменения календарных полей/родителя создают только одно `task.moved`; время обновления и записи истории формируется одним timestamp на команду.
   - Таймер/Pomodoro публикуют `time.started/paused/resumed/stopped`, `time.session.corrected` и `pomodoro.started/completed/interrupted`; у таймера и Pomodoro есть стабильные ID для корреляции фаз, новые поля optional для совместимости со старыми активными таймерами.
   - **Ограничение:** шина пока внутрипроцессная и не является durable outbox; напоминания ещё не публикуют события; автоматизации пока не подписаны на доменную шину. Полное вынесение всей бизнес-логики в сервис и событийная оркестрация остаются следующей итерацией.
 - Автоматизации: нет глубокого визуального редактора дерева условий и расширенного поиска по журналу.
