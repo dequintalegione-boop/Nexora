@@ -193,3 +193,30 @@ export function getCalendarSessionRange(
     end: Math.min(24 * 60, Math.ceil((clippedEnd - dayStart.getTime()) / 60_000)),
   }
 }
+
+
+/** Convert a pointer position inside a day column to the nearest visible time slot. */
+export function getCalendarDropMinutes(
+  clientY: number,
+  top: number,
+  height: number,
+  startMinutes: number,
+  endMinutes: number,
+  slotStep = 30,
+): number | null {
+  if (
+    !Number.isFinite(clientY) ||
+    !Number.isFinite(top) ||
+    !Number.isFinite(height) ||
+    height <= 0 ||
+    !Number.isFinite(startMinutes) ||
+    !Number.isFinite(endMinutes) ||
+    endMinutes <= startMinutes
+  ) return null
+  const step = Math.max(1, Math.round(slotStep))
+  const ratio = Math.max(0, Math.min(1 - Number.EPSILON, (clientY - top) / height))
+  const rawMinutes = startMinutes + ratio * (endMinutes - startMinutes)
+  const lowerBound = Math.ceil(startMinutes / step) * step
+  const upperBound = Math.max(lowerBound, Math.floor((endMinutes - step) / step) * step)
+  return Math.max(lowerBound, Math.min(upperBound, Math.floor(rawMinutes / step) * step))
+}
