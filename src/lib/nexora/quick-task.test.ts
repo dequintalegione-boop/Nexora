@@ -19,3 +19,14 @@ test("keeps unsupported relative phrases in the title", () => {
   const draft = parseQuickTaskInput("Обсудить через 500 дней", "2026-11-27")
   assert.equal(draft.title, "Обсудить через 500 дней")
 })
+
+test("parses a relative scheduled date in weeks", () => {
+  const draft = parseQuickTaskInput("Подготовить релиз через 2 недели", "2026-11-27")
+  assert.equal(draft.title, "Подготовить релиз")
+  assert.equal(draft.scheduledDate, "2026-12-11")
+})
+
+test("keeps unsupported week offsets in the title", () => {
+  const draft = parseQuickTaskInput("Обсудить через 53 недели", "2026-11-27")
+  assert.equal(draft.title, "Обсудить через 53 недели")
+})
