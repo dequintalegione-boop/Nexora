@@ -220,3 +220,50 @@ export function getCalendarDropMinutes(
   const upperBound = Math.max(lowerBound, Math.floor((endMinutes - step) / step) * step)
   return Math.max(lowerBound, Math.min(upperBound, Math.floor(rawMinutes / step) * step))
 }
+
+
+export interface CalendarDayActivity {
+  scheduled: number
+  deadlines: number
+  completed: number
+  timeBlocks: number
+  sessions: number
+}
+
+/** Summarize task and time-session activity for the dates in a compact month calendar. */
+export function getCalendarDayActivity(
+  tasks: readonly Task[],
+  sessions: readonly TimeSession[],
+  days: readonly string[],
+  isDoneStatus: (status: Task["status"]) => boolean,
+): Map<string, CalendarDayActivity> {
+  const result = new Map<string, CalendarDayActivity>(
+    days.map((day) => [day, { scheduled: 0, deadlines: 0, completed: 0, timeBlocks: 0, sessions: 0 }]),
+  )
+  const seenTaskIds = new Set<string>()
+
+  for (const task of tasks) {
+    if (seenTaskIds.has(task.id) || task.archived || task.deletedAt) continue
+    seenTaskIds.add(task.id)
+
+    const scheduledDay = task.scheduledDate ?? task.startAt?.slice(0, 10)
+    if (scheduledDay && result.has(scheduledDay)) result.get(scheduledDay)!.scheduled += 1
+    if (task.dueDate && result.has(task.dueDate)) result.get(task.dueDate)!.deadlines += 1
+    if (task.startAt && !task.allDay) {
+      const timeBlockDay = task.startAt.slice(0, 10)
+      if (result.has(timeBlockDay)) result.get(timeBlockDay)!.timeBlocks += 1
+    }
+
+    const completedDay = task.completedAt?.slice(0, 10)
+      ?? (isDoneStatus(task.status) ? task.updatedAt.slice(0, 10) : undefined)
+    if (completedDay && result.has(completedDay)) result.get(completedDay)!.completed += 1
+  }
+
+  for (const session of sessions) {
+    for (const day of days) {
+      if (getCalendarSessionRange(session, day)) result.get(day)!.sessions += 1
+    }
+  }
+
+  return result
+}

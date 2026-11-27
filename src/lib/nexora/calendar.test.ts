@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { getCalendarCreatePatch, getCalendarDayDropPatch, getCalendarDropMinutes, getCalendarDropPatch, getCalendarResizePatch, getCalendarSelectionRange, getCalendarSessionRange, getCalendarTaskTime, layoutCalendarEvents } from "./calendar.ts"
+import { getCalendarCreatePatch, getCalendarDayActivity, getCalendarDayDropPatch, getCalendarDropMinutes, getCalendarDropPatch, getCalendarResizePatch, getCalendarSelectionRange, getCalendarSessionRange, getCalendarTaskTime, layoutCalendarEvents } from "./calendar.ts"
 import type { Task, TimeSession } from "./types.ts"
 
 const task: Task = {
@@ -131,4 +131,59 @@ test("touch drop positions resolve to half-hour slots even over event cards", ()
   assert.equal(getCalendarDropMinutes(320, 100, 440, 6 * 60, 11 * 60), 8 * 60 + 30)
   assert.equal(getCalendarDropMinutes(540, 100, 440, 6 * 60, 11 * 60), 10 * 60 + 30)
   assert.equal(getCalendarDropMinutes(540, 100, 0, 6 * 60, 11 * 60), null)
+})
+
+
+test("mini calendar activity separates planned tasks, deadlines, completions and time blocks", () => {
+  const tasks: Task[] = [
+    { ...task, id: "scheduled", scheduledDate: "2026-11-28", startAt: "2026-11-28T09:00", endAt: "2026-11-28T10:00" },
+    { ...task, id: "due", scheduledDate: undefined, startAt: undefined, endAt: undefined, dueDate: "2026-11-28" },
+    { ...task, id: "completed", scheduledDate: undefined, startAt: undefined, endAt: undefined, status: "done", completedAt: "2026-11-29T11:00" },
+    { ...task, id: "done-fallback", scheduledDate: undefined, startAt: undefined, endAt: undefined, status: "done", completedAt: undefined, updatedAt: "2026-11-29T12:00" },
+    { ...task, id: "archived", scheduledDate: "2026-11-28", archived: true },
+  ]
+  const sessions: TimeSession[] = [
+    {
+      id: "session-cross-midnight",
+      createdAt: "2026-11-28T00:00:00",
+      updatedAt: "2026-11-28T00:00:00",
+      kind: "focus",
+      startedAt: "2026-11-28T23:30:00",
+      endedAt: "2026-11-29T00:30:00",
+      durationMinutes: 60,
+    },
+  ]
+  const activity = getCalendarDayActivity(tasks, sessions, ["2026-11-28", "2026-11-29"], (status) => status === "done")
+
+  assert.deepEqual(activity.get("2026-11-28"), {
+    scheduled: 1,
+    deadlines: 1,
+    completed: 0,
+    timeBlocks: 1,
+    sessions: 1,
+  })
+  assert.deepEqual(activity.get("2026-11-29"), {
+    scheduled: 0,
+    deadlines: 0,
+    completed: 2,
+    timeBlocks: 0,
+    sessions: 1,
+  })
+})
+
+test("mini calendar activity de-duplicates tasks and ignores dates outside the displayed month", () => {
+  const duplicate = { ...task, id: "same-task", scheduledDate: "2026-11-28" }
+  const activity = getCalendarDayActivity(
+    [duplicate, duplicate, { ...task, id: "outside", dueDate: "2026-12-01" }],
+    [],
+    ["2026-11-28"],
+    () => false,
+  )
+  assert.deepEqual(activity.get("2026-11-28"), {
+    scheduled: 1,
+    deadlines: 0,
+    completed: 0,
+    timeBlocks: 0,
+    sessions: 0,
+  })
 })

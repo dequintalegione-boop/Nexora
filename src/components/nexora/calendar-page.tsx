@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Play, Plus } from "lucide-react"
@@ -11,6 +11,7 @@ import {
 } from "@/lib/nexora/dates"
 import {
   getCalendarCreatePatch,
+  getCalendarDayActivity,
   getCalendarDayDropPatch,
   getCalendarDropMinutes,
   getCalendarDropPatch,
@@ -128,6 +129,8 @@ function monthName(year: number, month: number) {
 export function CalendarPage() {
   const [now, setNow] = useState(() => new Date())
   const calendarScrollRef = useRef<HTMLDivElement | null>(null)
+  const miniCalendarRef = useRef<HTMLDivElement | null>(null)
+  const miniCalendarTriggerRef = useRef<HTMLButtonElement | null>(null)
   const today = isoDate(now)
   const initial = parseISODate(today)
   const [view, setView] = useState<CalendarView>("week")
@@ -140,6 +143,7 @@ export function CalendarPage() {
   const [showWeekends, setShowWeekends] = useState(true)
   const [dayCount, setDayCount] = useState(3)
   const [agendaDayCount, setAgendaDayCount] = useState(7)
+  const [miniCalendarOpen, setMiniCalendarOpen] = useState(false)
   const [slotStartHour, setSlotStartHour] = useState(6)
   const [slotEndHour, setSlotEndHour] = useState(22)
   const [resizeDraft, setResizeDraft] = useState<ResizeDraft | null>(null)
@@ -162,6 +166,25 @@ export function CalendarPage() {
     const timer = window.setInterval(() => setNow(new Date()), 60_000)
     return () => window.clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    if (!miniCalendarOpen) return
+    const handleOutsidePointerDown = (event: Event) => {
+      if (!miniCalendarRef.current?.contains(event.target as Node)) setMiniCalendarOpen(false)
+    }
+    window.addEventListener("pointerdown", handleOutsidePointerDown)
+    return () => window.removeEventListener("pointerdown", handleOutsidePointerDown)
+  }, [miniCalendarOpen])
+
+  useEffect(() => {
+    if (!miniCalendarOpen) return
+    const frame = window.requestAnimationFrame(() => {
+      const target = miniCalendarRef.current?.querySelector<HTMLButtonElement>('[data-mini-day="' + selected + '"]')
+        ?? miniCalendarRef.current?.querySelector<HTMLButtonElement>("[data-mini-day]")
+      target?.focus()
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [miniCalendarOpen, selected])
 
   useEffect(() => {
     if (view !== "week" && view !== "days" && view !== "day") return
@@ -232,6 +255,68 @@ export function CalendarPage() {
     })),
     [cursor.year, weekStartsOn],
   )
+
+  const miniMonthDays = useMemo(() => {
+    const firstOfMonth = isoDate(new Date(cursor.year, cursor.month, 1))
+    const gridStart = startOfWeek(firstOfMonth, weekStartsOn)
+    return Array.from({ length: cells.length }, (_, index) => addDays(gridStart, index))
+  }, [cursor.year, cursor.month, weekStartsOn, cells.length])
+
+  const miniCalendarTasks = useMemo<CalendarTask[]>(() => {
+    const firstDay = miniMonthDays[0]
+    const lastDay = miniMonthDays[miniMonthDays.length - 1]
+    if (!firstDay || !lastDay) return []
+
+    const activeSeriesIds = new Set(
+      tasks
+        .filter((task) =>
+          (task.recurrenceParentId ?? task.id) === task.id &&
+          Boolean(task.recurrenceRule || task.repeat) &&
+          !task.deletedAt &&
+          !task.archived
+        )
+        .map((task) => task.id),
+    )
+    const ordinaryTasks = tasks.filter((task) =>
+      !task.deletedAt &&
+      !task.archived &&
+      !task.recurrenceRule &&
+      !task.repeat &&
+      (!task.recurrenceParentId || !activeSeriesIds.has(task.recurrenceParentId))
+    )
+    const savedCandidates = tasks.filter((task) =>
+      Boolean(task.recurrenceParentId && task.occurrenceDate && activeSeriesIds.has(task.recurrenceParentId)) &&
+      !task.deletedAt &&
+      !task.archived
+    )
+    const savedByOccurrence = new Map<string, Task>()
+    for (const task of savedCandidates) {
+      savedByOccurrence.set(task.recurrenceParentId + "::" + task.occurrenceDate, task)
+    }
+    const savedInstances = [...savedByOccurrence.values()]
+    const occurrences = expandTaskOccurrences(tasks, firstDay, lastDay).map(({ task, isVirtual, seriesId }) => ({
+      ...task,
+      virtualOccurrence: isVirtual,
+      recurrenceSeriesId: seriesId,
+    }))
+    const uniqueTasks = new Map<string, CalendarTask>()
+    for (const task of [...ordinaryTasks, ...savedInstances, ...occurrences]) uniqueTasks.set(task.id, task)
+    return [...uniqueTasks.values()]
+  }, [tasks, miniMonthDays])
+
+  const miniCalendarActivity = useMemo(
+    () => getCalendarDayActivity(
+      miniCalendarTasks,
+      sessions,
+      miniMonthDays,
+      (status) => isDoneStatus(status, settings),
+    ),
+    [miniCalendarTasks, sessions, miniMonthDays, settings],
+  )
+
+  const miniCalendarFocusDay = miniMonthDays.includes(selected)
+    ? selected
+    : miniMonthDays.includes(today) ? today : miniMonthDays[0]
 
   const recurrenceRange = useMemo(() => {
     if (view === "year") {
@@ -1009,11 +1094,47 @@ export function CalendarPage() {
   }
 
   const setSelectedDate = (day: string) => {
+    setMiniCalendarOpen(false)
     setSelected(day)
     setSelectedSlot(null)
     setShowComposer(false)
     const date = parseISODate(day)
     setCursor({ year: date.getFullYear(), month: date.getMonth() })
+  }
+
+  const shiftMiniCalendarMonth = (direction: -1 | 1) => {
+    setCursor((current) => {
+      const next = new Date(current.year, current.month + direction, 1)
+      return { year: next.getFullYear(), month: next.getMonth() }
+    })
+  }
+
+  const handleMiniCalendarDayKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, day: string) => {
+    let offset: number | null = null
+    if (event.key === "ArrowLeft") offset = -1
+    else if (event.key === "ArrowRight") offset = 1
+    else if (event.key === "ArrowUp") offset = -7
+    else if (event.key === "ArrowDown") offset = 7
+    else if (event.key === "Home") {
+      const weekday = parseISODate(day).getDay()
+      offset = -((weekday - weekStartsOn + 7) % 7)
+    } else if (event.key === "End") {
+      const weekday = parseISODate(day).getDay()
+      offset = 6 - ((weekday - weekStartsOn + 7) % 7)
+    }
+    if (offset === null) return
+    event.preventDefault()
+    const targetDay = addDays(day, offset)
+    const target = miniCalendarRef.current?.querySelector<HTMLButtonElement>('[data-mini-day="' + targetDay + '"]')
+    if (target) {
+      target.focus()
+      return
+    }
+    const nextDate = parseISODate(targetDay)
+    setCursor({ year: nextDate.getFullYear(), month: nextDate.getMonth() })
+    window.requestAnimationFrame(() => {
+      miniCalendarRef.current?.querySelector<HTMLButtonElement>('[data-mini-day="' + targetDay + '"]')?.focus()
+    })
   }
 
   return (
@@ -1107,6 +1228,94 @@ export function CalendarPage() {
           <button type="button" className="nexora-calendar-icon-button" aria-label="Следующий период" onClick={() => shift(1)}>
             <ChevronRight size={16} />
           </button>
+          <div className="nexora-calendar-mini" ref={miniCalendarRef}>
+            <button
+              ref={miniCalendarTriggerRef}
+              type="button"
+              className="nexora-calendar-mini-toggle"
+              aria-expanded={miniCalendarOpen}
+              aria-controls="nexora-mini-calendar-popover"
+              aria-label={miniCalendarOpen ? "Закрыть мини-календарь" : "Открыть мини-календарь"}
+              onClick={() => setMiniCalendarOpen((open) => !open)}
+            >
+              <CalendarDays size={14} />
+              Месяц
+            </button>
+            {miniCalendarOpen ? (
+              <div
+                id="nexora-mini-calendar-popover"
+                className="nexora-calendar-mini-popover"
+                role="dialog"
+                aria-label="Мини-календарь"
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault()
+                    setMiniCalendarOpen(false)
+                    miniCalendarTriggerRef.current?.focus()
+                  }
+                }}
+              >
+                <div className="nexora-calendar-mini-header">
+                  <button type="button" aria-label="Предыдущий месяц" onClick={() => shiftMiniCalendarMonth(-1)}>
+                    <ChevronLeft size={15} />
+                  </button>
+                  <span>{format(new Date(cursor.year, cursor.month, 1), "LLLL yyyy", { locale: ru })}</span>
+                  <button type="button" aria-label="Следующий месяц" onClick={() => shiftMiniCalendarMonth(1)}>
+                    <ChevronRight size={15} />
+                  </button>
+                  <button type="button" className="nexora-calendar-mini-today" onClick={() => setSelectedDate(today)}>Сегодня</button>
+                </div>
+                <div className="nexora-calendar-mini-weekdays" aria-hidden="true">
+                  {HEADS[weekStartsOn].map((label) => <span key={label}>{label}</span>)}
+                </div>
+                <div className="nexora-calendar-mini-days">
+                  {miniMonthDays.map((day) => {
+                    const activity = miniCalendarActivity.get(day)
+                    const dayLabel = format(parseISODate(day), "EEEE, d MMMM", { locale: ru })
+                    const scheduled = activity?.scheduled ?? 0
+                    const deadlines = activity?.deadlines ?? 0
+                    const completed = activity?.completed ?? 0
+                    const timeBlocks = activity?.timeBlocks ?? 0
+                    const sessionsCount = activity?.sessions ?? 0
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        data-mini-day={day}
+                        aria-current={day === today ? "date" : undefined}
+                        aria-pressed={day === selected}
+                        aria-label={dayLabel + ". Запланировано: " + scheduled + "; дедлайны: " + deadlines + "; завершено: " + completed + "; временные блоки: " + timeBlocks + "; сессии: " + sessionsCount + "."}
+                        title={dayLabel}
+                        tabIndex={day === miniCalendarFocusDay ? 0 : -1}
+                        className={cn(
+                          "nexora-calendar-mini-day",
+                          day === today && "nexora-calendar-mini-day-today",
+                          day === selected && "nexora-calendar-mini-day-selected",
+                          parseISODate(day).getMonth() !== cursor.month && "nexora-calendar-mini-day-outside",
+                        )}
+                        onClick={() => setSelectedDate(day)}
+                        onKeyDown={(event) => handleMiniCalendarDayKeyDown(event, day)}
+                      >
+                        <span className="nexora-calendar-mini-day-number">{parseISODate(day).getDate()}</span>
+                        <span className="nexora-calendar-mini-day-dots" aria-hidden="true">
+                          {scheduled ? <i className="nexora-calendar-mini-dot nexora-calendar-mini-dot-scheduled" /> : null}
+                          {deadlines ? <i className="nexora-calendar-mini-dot nexora-calendar-mini-dot-deadline" /> : null}
+                          {completed ? <i className="nexora-calendar-mini-dot nexora-calendar-mini-dot-completed" /> : null}
+                          {timeBlocks || sessionsCount ? <i className="nexora-calendar-mini-dot nexora-calendar-mini-dot-time" /> : null}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="nexora-calendar-mini-legend" aria-label="Обозначения">
+                  <span><i className="nexora-calendar-mini-dot nexora-calendar-mini-dot-scheduled" />План</span>
+                  <span><i className="nexora-calendar-mini-dot nexora-calendar-mini-dot-deadline" />Срок</span>
+                  <span><i className="nexora-calendar-mini-dot nexora-calendar-mini-dot-completed" />Готово</span>
+                  <span><i className="nexora-calendar-mini-dot nexora-calendar-mini-dot-time" />Время</span>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <p className="nexora-calendar-period-title">{title}</p>
