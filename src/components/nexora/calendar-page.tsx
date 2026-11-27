@@ -1302,7 +1302,7 @@ export function CalendarPage() {
         ) : null}
 
         {view === "days" ? (
-          <div ref={calendarScrollRef} className="nexora-calendar-scroll overflow-x-auto">
+          <div ref={calendarScrollRef} className="nexora-calendar-scroll">
             <div style={{ width: `max(100%, calc(3.5rem + ${customDays.length} * 9.5rem))` }}>
             <div
               className="nexora-calendar-day-header grid border-b border-white/10 bg-black/25 text-center text-xs"
@@ -1331,7 +1331,7 @@ export function CalendarPage() {
         ) : null}
 
         {view === "day" ? (
-          <div ref={calendarScrollRef} className="nexora-calendar-scroll overflow-x-auto">
+          <div ref={calendarScrollRef} className="nexora-calendar-scroll">
             <div style={{ width: "max(100%, 13rem)" }}>
               <div className="border-b border-white/10 bg-black/25 px-4 py-3 text-sm font-medium capitalize text-white/70">
                 {format(parseISODate(selected), "EEEE, d MMMM", { locale: ru })}
