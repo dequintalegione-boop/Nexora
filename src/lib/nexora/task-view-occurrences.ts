@@ -53,17 +53,16 @@ export function expandTasksForView(
     !task.deletedAt
   )
   const rootIds = new Set(roots.map((root) => root.id))
-  const childIds = new Set(
-    tasks
-      .filter((task) => task.recurrenceParentId && rootIds.has(task.recurrenceParentId))
-      .map((task) => task.id),
+  const savedCandidates = tasks.filter((task) =>
+    Boolean(task.recurrenceParentId && task.occurrenceDate && task.id !== task.recurrenceParentId && rootIds.has(task.recurrenceParentId))
   )
+  const childIds = new Set(savedCandidates.map((task) => task.id))
   const ordinaryTasks = tasks.filter((task) => !rootIds.has(task.id) && !childIds.has(task.id))
-  const savedInstances = tasks.filter((task) =>
-    Boolean(task.recurrenceParentId && rootIds.has(task.recurrenceParentId)) &&
-    !task.archived &&
-    !task.deletedAt
-  )
+  const savedByOccurrence = new Map<string, Task>()
+  for (const task of savedCandidates) {
+    savedByOccurrence.set(`${task.recurrenceParentId}::${task.occurrenceDate}`, task)
+  }
+  const savedInstances = [...savedByOccurrence.values()].filter((task) => !task.archived && !task.deletedAt)
   const occurrences: TaskOccurrenceView[] = expandTaskOccurrences(tasks, range.start, range.end)
   const occurrenceTasks: TaskViewItem[] = occurrences.map(({ task, isVirtual, seriesId }) => ({
     ...task,
@@ -71,9 +70,12 @@ export function expandTasksForView(
     recurrenceSeriesId: seriesId,
   }))
   const returnedIds = new Set(occurrenceTasks.map((task) => task.id))
+  const returnedOccurrenceKeys = new Set(
+    occurrences.map((occurrence) => `${occurrence.seriesId}::${occurrence.occurrenceDate}`),
+  )
   const seriesMasters: TaskViewItem[] = roots.filter((root) => !returnedIds.has(root.id))
   const savedOutsideWindow: TaskViewItem[] = savedInstances
-    .filter((task) => !returnedIds.has(task.id))
+    .filter((task) => !returnedIds.has(task.id) && !returnedOccurrenceKeys.has(`${task.recurrenceParentId}::${task.occurrenceDate}`))
     .map((task) => ({
       ...task,
       virtualOccurrence: false,
