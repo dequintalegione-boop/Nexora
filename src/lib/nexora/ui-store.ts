@@ -1,6 +1,6 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
-import type { Priority, TaskStatus } from "./types"
+import type { Priority, Task, TaskStatus } from "./types"
 import type { TaskFilterGroup } from "./task-filters"
 import type { KanbanGroupBy } from "./kanban"
 import type { TaskTemplate } from "./task-templates"
@@ -49,13 +49,21 @@ export type SavedTaskView = {
   kanbanGroupBy?: KanbanGroupBy
 }
 
+export type TaskOccurrenceContext = {
+  seriesId: string
+  occurrenceDate: string
+  task: Task
+}
+
 type UIState = {
   taskId: string | null
+  taskOccurrence: TaskOccurrenceContext | null
   savedTaskViews: SavedTaskView[]
   taskTableColumns: TaskTableColumn[]
   kanbanGroupBy: KanbanGroupBy
   taskTemplates: TaskTemplate[]
   setTaskId: (id: string | null) => void
+  setTaskOccurrence: (occurrence: TaskOccurrenceContext | null) => void
   saveTaskView: (view: Omit<SavedTaskView, "id">) => void
   removeTaskView: (id: string) => void
   toggleTaskTableColumn: (column: TaskTableColumn) => void
@@ -68,11 +76,13 @@ export const useUI = create<UIState>()(
   persist(
     (set) => ({
       taskId: null,
+      taskOccurrence: null,
       savedTaskViews: [],
       taskTableColumns: DEFAULT_TASK_TABLE_COLUMNS,
       kanbanGroupBy: "status",
       taskTemplates: [],
-      setTaskId: (taskId) => set({ taskId }),
+      setTaskId: (taskId) => set({ taskId, ...(taskId === null ? { taskOccurrence: null } : {}) }),
+      setTaskOccurrence: (taskOccurrence) => set({ taskOccurrence }),
       saveTaskView: (view) => set((state) => ({
         savedTaskViews: [
           ...state.savedTaskViews,
@@ -109,6 +119,7 @@ export const useUI = create<UIState>()(
       merge: (persisted, current) => ({
         ...current,
         ...(persisted as Partial<UIState>),
+        taskOccurrence: null,
         taskTableColumns: (persisted as Partial<UIState>).taskTableColumns ?? DEFAULT_TASK_TABLE_COLUMNS,
         kanbanGroupBy: (persisted as Partial<UIState>).kanbanGroupBy ?? "status",
         taskTemplates: (persisted as Partial<UIState>).taskTemplates ?? [],

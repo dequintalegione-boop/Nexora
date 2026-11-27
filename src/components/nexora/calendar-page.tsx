@@ -64,7 +64,7 @@ type CalendarDropTarget = {
 }
 
 type TouchTaskDrag = {
-  taskId: string
+  task: CalendarTask
   pointerId: number
   startX: number
   startY: number
@@ -153,6 +153,7 @@ export function CalendarPage() {
   const [filterTag, setFilterTag] = useState("")
   const [touchTaskDrag, setTouchTaskDrag] = useState<TouchTaskDrag | null>(null)
   const touchTaskDragRef = useRef<TouchTaskDrag | null>(null)
+  const draggedTaskRef = useRef<CalendarTask | null>(null)
   const suppressTouchClickRef = useRef(false)
 
   useEffect(() => {
@@ -167,7 +168,9 @@ export function CalendarPage() {
   const sessions = useNexora((s) => s.sessions)
   const addTask = useNexora((s) => s.addTask)
   const updateTask = useNexora((s) => s.updateTask)
+  const materializeTaskOccurrence = useNexora((s) => s.materializeTaskOccurrence)
   const setTaskId = useUI((s) => s.setTaskId)
+  const setTaskOccurrence = useUI((s) => s.setTaskOccurrence)
   const priorityLabels = getTaskPriorityLabels(settings)
   const statusDefinitions = getTaskStatusDefinitions(settings).filter((status) => !status.hidden)
 
@@ -346,8 +349,16 @@ export function CalendarPage() {
     setCursor({ year: date.getFullYear(), month: date.getMonth() })
   }
 
-  const onEventClick = (task: CalendarTask) =>
-    setTaskId(task.virtualOccurrence ? task.recurrenceSeriesId ?? task.id : task.id)
+  const onEventClick = (task: CalendarTask) => {
+    if (task.virtualOccurrence && task.recurrenceParentId && task.occurrenceDate) {
+      const seriesId = task.recurrenceSeriesId ?? task.recurrenceParentId
+      setTaskId(seriesId)
+      setTaskOccurrence({ seriesId, occurrenceDate: task.occurrenceDate, task })
+      return
+    }
+    setTaskOccurrence(null)
+    setTaskId(task.id)
+  }
 
   const eventChipClass = (task: CalendarTask, kind: "scheduled" | "due") =>
     cn(
@@ -365,7 +376,7 @@ export function CalendarPage() {
       <button
         key={task.id}
         type="button"
-        draggable={!task.virtualOccurrence}
+        draggable={!task.virtualOccurrence || Boolean(task.recurrenceParentId && task.occurrenceDate)}
         onPointerDown={(event) => beginTouchTaskDrag(event, task)}
         onPointerMove={moveTouchTaskDrag}
         onPointerUp={finishTouchTaskDrag}
@@ -375,10 +386,12 @@ export function CalendarPage() {
           event.stopPropagation()
           onEventClick(task)
         }}
-        onDragStart={task.virtualOccurrence ? undefined : (event) => {
+        onDragStart={(event) => {
+          draggedTaskRef.current = task
           event.dataTransfer.setData("text/task-id", task.id)
           event.dataTransfer.effectAllowed = "move"
         }}
+        onDragEnd={() => { draggedTaskRef.current = null }}
         className={eventChipClass(task, isDue ? "due" : "scheduled")}
         title={`${task.title}${time ? ` · ${time}` : ""}${isDue ? " · срок" : ""}${task.virtualOccurrence ? " · повторение" : ""}`}
       >
@@ -391,33 +404,46 @@ export function CalendarPage() {
     )
   }
 
+  const resolveCalendarTaskSource = (id: string): { id: string; task: CalendarTask } | null => {
+    const dragged = draggedTaskRef.current
+    if (dragged?.id === id && dragged.virtualOccurrence) {
+      const materializedId = materializeTaskOccurrence(dragged)
+      return materializedId ? { id: materializedId, task: dragged } : null
+    }
+    const task = tasks.find((item) => item.id === id)
+    return task ? { id: task.id, task } : null
+  }
+
   const handleDayDrop = (day: string) => (event: DragEvent) => {
     event.preventDefault()
     const id = event.dataTransfer.getData("text/task-id")
-    const task = tasks.find((item) => item.id === id)
-    if (!task) return
-    updateTask(id, getCalendarDayDropPatch(task, day))
+    const source = resolveCalendarTaskSource(id)
+    if (!source) return
+    updateTask(source.id, getCalendarDayDropPatch(source.task, day))
+    draggedTaskRef.current = null
   }
 
   const handleAllDayDrop = (day: string) => (event: DragEvent) => {
     event.preventDefault()
     const id = event.dataTransfer.getData("text/task-id")
-    const task = tasks.find((item) => item.id === id)
-    if (!task) return
-    updateTask(id, {
+    const source = resolveCalendarTaskSource(id)
+    if (!source) return
+    updateTask(source.id, {
       scheduledDate: day,
       startAt: undefined,
       endAt: undefined,
       allDay: true,
     })
+    draggedTaskRef.current = null
   }
 
   const handleSlotDrop = (day: string, minutes: number) => (event: DragEvent) => {
     event.preventDefault()
     const id = event.dataTransfer.getData("text/task-id")
-    const task = tasks.find((item) => item.id === id)
-    if (!task) return
-    updateTask(id, getCalendarDropPatch(task, day, minutes))
+    const source = resolveCalendarTaskSource(id)
+    if (!source) return
+    updateTask(source.id, getCalendarDropPatch(source.task, day, minutes))
+    draggedTaskRef.current = null
   }
 
   const resolveCalendarDropTarget = (clientX: number, clientY: number): CalendarDropTarget | null => {
@@ -443,9 +469,9 @@ export function CalendarPage() {
     return { day, minutes: null, allDay: false }
   }
 
-  const applyCalendarTouchDrop = (taskId: string, target: CalendarDropTarget) => {
-    const task = tasks.find((item) => item.id === taskId)
-    if (!task) return
+  const applyCalendarTouchDrop = (task: CalendarTask, target: CalendarDropTarget) => {
+    const taskId = task.virtualOccurrence ? materializeTaskOccurrence(task) : task.id
+    if (!taskId) return
     if (target.allDay) {
       updateTask(taskId, {
         scheduledDate: target.day,
@@ -463,12 +489,13 @@ export function CalendarPage() {
   }
 
   const beginTouchTaskDrag = (event: PointerEvent<HTMLButtonElement>, task: CalendarTask) => {
-    if (event.pointerType !== "touch" || !event.isPrimary || task.virtualOccurrence) return
+    if (event.pointerType !== "touch" || !event.isPrimary) return
+    if (task.virtualOccurrence && (!task.recurrenceParentId || !task.occurrenceDate)) return
     suppressTouchClickRef.current = false
     event.stopPropagation()
     event.currentTarget.setPointerCapture(event.pointerId)
     const drag: TouchTaskDrag = {
-      taskId: task.id,
+      task,
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
@@ -500,7 +527,7 @@ export function CalendarPage() {
       : null
     if (current.active) {
       suppressTouchClickRef.current = true
-      if (target) applyCalendarTouchDrop(current.taskId, target)
+      if (target) applyCalendarTouchDrop(current.task, target)
     }
     touchTaskDragRef.current = null
     setTouchTaskDrag(null)
@@ -539,7 +566,7 @@ export function CalendarPage() {
     range: TaskMinutes,
     edge: "start" | "end",
   ) => {
-    if (task.virtualOccurrence) return
+    if (task.virtualOccurrence && (!task.recurrenceParentId || !task.occurrenceDate)) return
     event.preventDefault()
     event.stopPropagation()
     event.currentTarget.setPointerCapture(event.pointerId)
@@ -577,7 +604,8 @@ export function CalendarPage() {
   const handleResizeEnd = (event: PointerEvent<HTMLSpanElement>, task: CalendarTask) => {
     if (!resizeDraft || resizeDraft.taskId !== task.id || resizeDraft.pointerId !== event.pointerId) return
     const current = resizeDraft
-    updateTask(task.id, getCalendarResizePatch(task, current.day, current.previewStart, current.previewEnd))
+    const taskId = task.virtualOccurrence ? materializeTaskOccurrence(task) : task.id
+    if (taskId) updateTask(taskId, getCalendarResizePatch(task, current.day, current.previewStart, current.previewEnd))
     setResizeDraft(null)
   }
 
@@ -789,15 +817,17 @@ export function CalendarPage() {
                     <button
                       key={task.id}
                       type="button"
-                      draggable={!task.virtualOccurrence}
+                      draggable={!task.virtualOccurrence || Boolean(task.recurrenceParentId && task.occurrenceDate)}
                       onPointerDown={(event) => beginTouchTaskDrag(event, task)}
                       onPointerMove={moveTouchTaskDrag}
                       onPointerUp={finishTouchTaskDrag}
                       onPointerCancel={cancelTouchTaskDrag}
-                      onDragStart={task.virtualOccurrence ? undefined : (event) => {
+                      onDragStart={(event) => {
+                        draggedTaskRef.current = task
                         event.dataTransfer.setData("text/task-id", task.id)
                         event.dataTransfer.effectAllowed = "move"
                       }}
+                      onDragEnd={() => { draggedTaskRef.current = null }}
                       onClick={(event) => {
                         if (handleTouchTaskClick(event)) return
                         event.stopPropagation()
@@ -833,7 +863,7 @@ export function CalendarPage() {
                           {task.description}
                         </span>
                       ) : null}
-                      {!task.virtualOccurrence ? (
+                      {!task.virtualOccurrence || Boolean(task.recurrenceParentId && task.occurrenceDate) ? (
                         <>
                           <span
                             role="presentation"
@@ -1346,10 +1376,13 @@ export function CalendarPage() {
                               if (handleTouchTaskClick(event)) return
                               onEventClick(task)
                             }}
-                            draggable={!task.virtualOccurrence}
-                            onDragStart={task.virtualOccurrence ? undefined : (event) => {
+                            draggable={!task.virtualOccurrence || Boolean(task.recurrenceParentId && task.occurrenceDate)}
+                            onDragStart={(event) => {
+                              draggedTaskRef.current = task
                               event.dataTransfer.setData("text/task-id", task.id)
+                              event.dataTransfer.effectAllowed = "move"
                             }}
+                            onDragEnd={() => { draggedTaskRef.current = null }}
                           >
                             <span className="flex w-20 shrink-0 items-center gap-1.5 text-xs tabular-nums text-white/55">
                               <Clock3 size={12} />

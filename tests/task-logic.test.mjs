@@ -2,10 +2,12 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import {
   buildNextTaskOccurrence,
+  buildMaterializedTaskOccurrence,
   canAddTaskDependency,
   canSetTaskParent,
   getDependencyState,
   getTaskChildren,
+  skipRecurrenceOccurrenceTask,
   updateRecurrenceSeriesTasks,
 } from "../src/lib/nexora/task-logic.ts"
 import {
@@ -162,6 +164,7 @@ test("series rule updates affect the root and future active occurrences only", (
     task("root", { recurrenceRule: { frequency: "weekly", interval: 1 } }),
     task("future-a", { recurrenceParentId: "root", occurrenceNumber: 2 }),
     task("future-b", { recurrenceParentId: "root", occurrenceNumber: 3, status: "in_progress" }),
+    task("customized", { recurrenceParentId: "root", occurrenceNumber: 6, recurrenceOverride: true, scheduledDate: "2026-01-20" }),
     task("completed", { recurrenceParentId: "root", occurrenceNumber: 1, status: "done" }),
     task("skipped", { recurrenceParentId: "root", occurrenceNumber: 4, status: "cancelled" }),
     task("archived", { recurrenceParentId: "root", occurrenceNumber: 5, archived: true }),
@@ -172,6 +175,8 @@ test("series rule updates affect the root and future active occurrences only", (
 
   assert.equal(result.updatedCount, 3)
   assert.deepEqual(result.tasks.find((item) => item.id === "root")?.recurrenceRule, rule)
+  assert.equal(result.tasks.find((item) => item.id === "customized")?.recurrenceRule, undefined)
+  assert.equal(result.tasks.find((item) => item.id === "customized")?.scheduledDate, "2026-01-20")
   assert.deepEqual(result.tasks.find((item) => item.id === "future-a")?.recurrenceRule, rule)
   assert.deepEqual(result.tasks.find((item) => item.id === "future-b")?.recurrenceRule, rule)
   assert.equal(result.tasks.find((item) => item.id === "completed")?.recurrenceRule, undefined)
@@ -405,4 +410,107 @@ test("calendar expansion returns virtual dates without materializing persisted t
   assert.equal(expanded.find((item) => item.occurrenceDate === "2026-01-05")?.task.id, "series::2026-01-05")
   assert.equal(expanded.find((item) => item.occurrenceDate === "2026-01-04")?.task.startAt, "2026-01-04T09:00:00.000Z")
   assert.equal(expanded.find((item) => item.occurrenceDate === "2026-01-04")?.task.endAt, "2026-01-04T10:00:00.000Z")
+})
+
+
+test("virtual occurrence materialization keeps its date identity but removes series rules", () => {
+  const virtual = task("series::2026-01-08", {
+    status: "planned",
+    recurrenceParentId: "series",
+    occurrenceDate: "2026-01-08",
+    occurrenceNumber: 4,
+    recurrenceStartDate: "2026-01-05",
+    recurrenceStartScheduledDate: "2026-01-05",
+    scheduledDate: "2026-01-08",
+    startAt: "2026-01-08T09:00:00.000Z",
+    endAt: "2026-01-08T10:30:00.000Z",
+    recurrenceRule: undefined,
+    repeat: undefined,
+    virtualOccurrence: true,
+    recurrenceSeriesId: "series",
+  })
+  const materialized = buildMaterializedTaskOccurrence(
+    virtual,
+    "task-instance-4",
+    "2026-01-07T10:00:00.000Z",
+  )
+
+  assert.equal(materialized?.id, "task-instance-4")
+  assert.equal(materialized?.recurrenceParentId, "series")
+  assert.equal(materialized?.occurrenceDate, "2026-01-08")
+  assert.equal(materialized?.occurrenceNumber, 4)
+  assert.equal(materialized?.scheduledDate, "2026-01-08")
+  assert.equal(materialized?.startAt, "2026-01-08T09:00:00.000Z")
+  assert.equal(materialized?.recurrenceRule, undefined)
+  assert.equal(materialized?.repeat, undefined)
+  assert.equal(materialized?.recurrenceOverride, true)
+  assert.equal("virtualOccurrence" in (materialized ?? {}), false)
+  assert.equal("recurrenceSeriesId" in (materialized ?? {}), false)
+  assert.equal(materialized?.createdAt, "2026-01-07T10:00:00.000Z")
+  assert.match(materialized?.history?.at(-1)?.change ?? "", /отделён от серии/)
+  assert.equal(buildMaterializedTaskOccurrence(task("ordinary"), "new-id", "2026-01-07T10:00:00.000Z"), null)
+})
+
+test("materialized moved occurrence remains a single persisted item in calendar expansion", () => {
+  const root = task("series", {
+    scheduledDate: "2026-01-05",
+    recurrenceStartDate: "2026-01-05",
+    recurrenceStartScheduledDate: "2026-01-05",
+    recurrenceRule: { frequency: "daily", interval: 1, count: 5 },
+  })
+  const virtual = expandTaskOccurrences([root], "2026-01-05", "2026-01-09")
+    .find((item) => item.occurrenceDate === "2026-01-07")?.task
+  assert.ok(virtual)
+  const materialized = buildMaterializedTaskOccurrence(virtual, "instance-3", "2026-01-06T12:00:00.000Z")
+  assert.ok(materialized)
+  const moved = { ...materialized, scheduledDate: "2026-01-12", startAt: "2026-01-12T09:00:00.000Z" }
+  const expanded = expandTaskOccurrences([root, moved], "2026-01-05", "2026-01-12")
+  const saved = expanded.filter((item) => item.occurrenceDate === "2026-01-07")
+  assert.equal(saved.length, 1)
+  assert.equal(saved[0]?.task.id, "instance-3")
+  assert.equal(saved[0]?.isVirtual, false)
+  assert.equal(saved[0]?.task.scheduledDate, "2026-01-12")
+  assert.equal(expanded.filter((item) => item.task.id === "series::2026-01-07").length, 0)
+})
+
+test("skipping a virtual occurrence excludes only that date and leaves the series active", () => {
+  const root = task("series", {
+    status: "in_progress",
+    occurrenceDate: "2026-01-05",
+    recurrenceStartDate: "2026-01-05",
+    recurrenceRule: { frequency: "daily", interval: 1, count: 5 },
+  })
+  const future = task("saved-future", {
+    recurrenceParentId: "series",
+    occurrenceDate: "2026-01-07",
+    occurrenceNumber: 3,
+    scheduledDate: "2026-01-07",
+  })
+  const other = task("unrelated")
+  const skipped = skipRecurrenceOccurrenceTask(
+    [root, future, other],
+    "series",
+    "2026-01-06",
+    "2026-01-05T12:00:00.000Z",
+  )
+
+  assert.equal(skipped.updatedCount, 1)
+  assert.equal(skipped.tasks.find((item) => item.id === "series")?.status, "in_progress")
+  assert.deepEqual(skipped.tasks.find((item) => item.id === "series")?.skippedOccurrences, ["2026-01-06"])
+  assert.equal(skipped.tasks.find((item) => item.id === "saved-future"), future)
+  assert.equal(skipped.tasks.find((item) => item.id === "unrelated"), other)
+  assert.deepEqual(
+    getRecurrenceOccurrences(
+      root.recurrenceRule,
+      "2026-01-05",
+      "2026-01-05",
+      "2026-01-09",
+      skipped.tasks.find((item) => item.id === "series")?.skippedOccurrences ?? [],
+    ).map((item) => item.date),
+    ["2026-01-05", "2026-01-07", "2026-01-08", "2026-01-09"],
+  )
+  assert.equal(
+    skipRecurrenceOccurrenceTask(skipped.tasks, "series", "2026-01-06", "2026-01-05T13:00:00.000Z").updatedCount,
+    0,
+  )
 })
