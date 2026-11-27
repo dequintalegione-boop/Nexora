@@ -450,6 +450,7 @@ export function CalendarPage() {
 
   const beginTouchTaskDrag = (event: PointerEvent<HTMLButtonElement>, task: CalendarTask) => {
     if (event.pointerType !== "touch" || !event.isPrimary || task.virtualOccurrence) return
+    suppressTouchClickRef.current = false
     event.stopPropagation()
     event.currentTarget.setPointerCapture(event.pointerId)
     const drag: TouchTaskDrag = {
@@ -1281,7 +1282,13 @@ export function CalendarPage() {
             {listDays.map((day) => {
               const dayList = tasksForDay(day)
               return (
-                <div key={day} data-calendar-drop-day={day} className="px-4 py-4">
+                <div
+                  key={day}
+                  data-calendar-drop-day={day}
+                  className={cn("px-4 py-4", touchTaskDrag?.active && touchTaskDrag.target?.day === day && "nexora-calendar-drop-target")}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={handleDayDrop(day)}
+                >
                   <button
                     type="button"
                     className={cn(
