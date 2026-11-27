@@ -16,6 +16,9 @@ export type TaskDomainEventType =
   | "task.unarchived"
   | "task.scheduled.changed"
   | "task.due.changed"
+  /** Scheduler evaluation events consumed by task automations. */
+  | "task.due"
+  | "task.due_soon"
   | "task.priority.changed"
   | "task.tags.changed"
   | "task.contexts.changed"
