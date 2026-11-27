@@ -124,7 +124,7 @@ test("quarter-hour snap supports precise selection and drop positions", () => {
 })
 
 
-test("fit-to-window computes a bounded hour height from the available planner viewport", () => {
+test("fit-to-window computes a readable hour height from the available planner viewport", () => {
   assert.equal(getCalendarFitPixelsPerHour(656, 82, 6, 22), 35)
   assert.equal(getCalendarFitPixelsPerHour(240, 82, 6, 22), null)
   assert.equal(getCalendarFitPixelsPerHour(4000, 100, 6, 22), 243)
