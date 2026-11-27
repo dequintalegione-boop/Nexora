@@ -4,10 +4,14 @@ import { STATUS_LABEL, WIDGETS, isDoneStatus } from "./copy"
 import { buildSeed } from "./seed"
 import { DEFAULT_POMODORO_SETTINGS, getNextPomodoroPhase, getPomodoroPhaseDurationMs, normalizePomodoroSettings } from "./pomodoro"
 import { correctTimeSession } from "./time-tracking"
+import { createTaskDomainEvent, taskEventBus } from "./task-events"
+import type { CreateTaskDomainEventInput } from "./task-events"
+import { createTaskRepository } from "./task-repository"
+import { createTaskService } from "./task-service"
 import { getTasksDueForAutomation, getTasksDueSoonForAutomation, runTaskAutomations } from "./automations"
 import { CURRENT_SCHEMA_VERSION, migratePersistedData } from "./migrate"
 import type { TaskAutomationRule } from "./automations"
-import { buildNextTaskOccurrence, canAddTaskDependency, canSetTaskParent, updateRecurrenceSeriesTasks } from "./task-logic"
+import { buildNextTaskOccurrence, updateRecurrenceSeriesTasks } from "./task-logic"
 import type {
   DailyEntry,
   Direction,
@@ -117,6 +121,29 @@ type Store = Persisted & {
   updateAutomationRule: (id: string, patch: Partial<TaskAutomationRule>) => void
   removeAutomationRule: (id: string) => void
   runDueAutomations: () => void
+}
+
+function createStoreTaskService(
+  getTasks: () => Task[],
+  setTasks: (tasks: Task[]) => void,
+  isDone: (status: TaskStatus) => boolean,
+) {
+  const repository = createTaskRepository(getTasks, setTasks)
+  return createTaskService(repository, taskEventBus, {
+    now: nowISO,
+    createId: (prefix) => nid(prefix),
+    isDoneStatus: isDone,
+  })
+}
+
+function publishStoreTaskEvent(
+  input: Omit<CreateTaskDomainEventInput, "eventId" | "occurredAt">,
+): void {
+  taskEventBus.publish(createTaskDomainEvent({
+    ...input,
+    eventId: nid("event"),
+    occurredAt: nowISO(),
+  }))
 }
 
 export const useNexora = create<Store>()(
@@ -235,22 +262,41 @@ export const useNexora = create<Store>()(
           contexts: input.contexts ?? [],
           history: [{ at: now, change: "Задача создана" }],
         }
-        set((s) => {
-          const event = { type: "task.created" as const, taskId: id, eventId: nid("event"), occurredAt: now }
-          const result = runTaskAutomations([task, ...s.tasks], s.automationRules ?? [], event)
-          return { tasks: result.tasks, automationRuns: [...result.runs, ...(s.automationRuns ?? [])].slice(0, 200) }
+        const repository = createTaskRepository(
+          () => get().tasks,
+          (tasks) => {
+            const event = { type: "task.created" as const, taskId: id, eventId: nid("event"), occurredAt: now }
+            const result = runTaskAutomations(tasks, get().automationRules ?? [], event)
+            set({
+              tasks: result.tasks,
+              automationRuns: [...result.runs, ...(get().automationRuns ?? [])].slice(0, 200),
+            })
+          },
+        )
+        const service = createTaskService(repository, taskEventBus, {
+          now: nowISO,
+          createId: (prefix) => nid(prefix),
+          isDoneStatus: (status) => isDoneStatus(status, get().settings),
         })
+        service.create(task, { source: "ui", correlationId: id })
         return id
       },
 
-      updateTask: (id, patch) =>
-        set((s) => ({
-          tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...patch, updatedAt: nowISO() } : t)),
-        })),
+      updateTask: (id, patch) => {
+        const service = createStoreTaskService(
+          () => get().tasks,
+          (tasks) => set({ tasks }),
+          (status) => isDoneStatus(status, get().settings),
+        )
+        service.update(id, patch)
+      },
 
-      setTaskStatus: (id, status) =>
+      setTaskStatus: (id, status) => {
+        const before = get().tasks.find((task) => task.id === id)
+        if (!before || before.status === status) return
+        const now = nowISO()
+
         set((s) => {
-          const now = nowISO()
           const current = s.tasks.find((task) => task.id === id)
           if (!current || current.status === status) return s
 
@@ -298,9 +344,37 @@ export const useNexora = create<Store>()(
             tasks: completionResult.tasks,
             automationRuns: [...completionResult.runs, ...statusResult.runs, ...(s.automationRuns ?? [])].slice(0, 200),
           }
-        }),
+        })
+
+        const after = get().tasks.find((task) => task.id === id)
+        if (!after) return
+        const correlationId = nid("corr")
+        publishStoreTaskEvent({ type: "task.updated", entityId: id, before, after, source: "ui", correlationId })
+        if (before.status !== after.status) {
+          publishStoreTaskEvent({ type: "task.status.changed", entityId: id, before, after, source: "ui", correlationId })
+        }
+        const wasDone = isDoneStatus(before.status, get().settings)
+        const isDone = isDoneStatus(after.status, get().settings)
+        if (!wasDone && isDone) {
+          publishStoreTaskEvent({ type: "task.completed", entityId: id, before, after, source: "ui", correlationId })
+          if (before.recurrenceRule || before.repeat) {
+            publishStoreTaskEvent({
+              type: "recurring.instance.completed",
+              entityId: id,
+              before,
+              after,
+              source: "recurrence",
+              correlationId,
+              metadata: { occurrenceDate: before.occurrenceDate ?? before.scheduledDate ?? null },
+            })
+          }
+        } else if (wasDone && !isDone) {
+          publishStoreTaskEvent({ type: "task.uncompleted", entityId: id, before, after, source: "ui", correlationId })
+        }
+      },
 
       updateRecurrenceSeries: (id, rule) => {
+        const before = get().tasks.find((task) => task.id === id)
         const now = nowISO()
         let updatedCount = 0
         set((state) => {
@@ -308,20 +382,31 @@ export const useNexora = create<Store>()(
           updatedCount = result.updatedCount
           return { tasks: result.tasks }
         })
+        const after = get().tasks.find((task) => task.id === id)
+        if (before && after && updatedCount > 0) {
+          publishStoreTaskEvent({
+            type: "task.recurrence.changed",
+            entityId: id,
+            before,
+            after,
+            source: "recurrence",
+            correlationId: nid("corr"),
+          })
+        }
         return updatedCount
       },
 
       skipTaskOccurrence: (id) => {
-        const current = get().tasks.find((task) => task.id === id)
-        if (!current || current.deletedAt || current.archived) return false
-        if (!current.recurrenceRule && !current.repeat) return false
-        if (isDoneStatus(current.status, get().settings) || current.status === "cancelled") return false
+        const before = get().tasks.find((task) => task.id === id)
+        if (!before || before.deletedAt || before.archived) return false
+        if (!before.recurrenceRule && !before.repeat) return false
+        if (isDoneStatus(before.status, get().settings) || before.status === "cancelled") return false
 
         const now = nowISO()
         const occurrenceKey =
-          current.occurrenceDate ?? current.scheduledDate ?? current.dueDate ?? now.slice(0, 10)
-        const skippedOccurrences = [...new Set([...(current.skippedOccurrences ?? []), occurrenceKey])]
-        const next = buildNextTaskOccurrence({ ...current, skippedOccurrences }, now)
+          before.occurrenceDate ?? before.scheduledDate ?? before.dueDate ?? now.slice(0, 10)
+        const skippedOccurrences = [...new Set([...(before.skippedOccurrences ?? []), occurrenceKey])]
+        const next = buildNextTaskOccurrence({ ...before, skippedOccurrences }, now)
 
         set((state) => {
           const nextTasks = state.tasks.map((task) =>
@@ -340,7 +425,7 @@ export const useNexora = create<Store>()(
               : task
           )
           if (next) {
-            const seriesId = current.recurrenceParentId ?? current.id
+            const seriesId = before.recurrenceParentId ?? before.id
             const exists = state.tasks.some(
               (task) =>
                 (task.recurrenceParentId ?? task.id) === seriesId && task.occurrenceDate === next.occurrenceDate
@@ -349,131 +434,101 @@ export const useNexora = create<Store>()(
           }
           return { tasks: nextTasks }
         })
+
+        const after = get().tasks.find((task) => task.id === id)
+        if (after) {
+          const correlationId = nid("corr")
+          publishStoreTaskEvent({
+            type: "task.updated",
+            entityId: id,
+            before,
+            after,
+            source: "recurrence",
+            correlationId,
+          })
+          publishStoreTaskEvent({
+            type: "task.status.changed",
+            entityId: id,
+            before,
+            after,
+            source: "recurrence",
+            correlationId,
+          })
+          publishStoreTaskEvent({
+            type: "recurring.instance.skipped",
+            entityId: id,
+            before,
+            after,
+            source: "recurrence",
+            correlationId,
+            metadata: { occurrenceDate: occurrenceKey },
+          })
+        }
         return true
       },
 
-      archiveTask: (id) =>
-        set((s) => {
-          const now = nowISO()
-          return {
-            tasks: s.tasks.map((t) =>
-              t.id === id
-                ? {
-                    ...t,
-                    archived: true,
-                    archivedAt: now,
-                    updatedAt: now,
-                    history: [...(t.history ?? []), { at: now, change: "Задача архивирована" }].slice(-100),
-                  }
-                : t
-            ),
-          }
-        }),
+      archiveTask: (id) => {
+        const service = createStoreTaskService(
+          () => get().tasks,
+          (tasks) => set({ tasks }),
+          (status) => isDoneStatus(status, get().settings),
+        )
+        service.archive(id)
+      },
 
-      restoreTask: (id) =>
-        set((s) => {
-          const now = nowISO()
-          return {
-            tasks: s.tasks.map((t) =>
-              t.id === id
-                ? {
-                    ...t,
-                    archived: false,
-                    archivedAt: undefined,
-                    deletedAt: undefined,
-                    updatedAt: now,
-                    history: [...(t.history ?? []), { at: now, change: "Задача восстановлена" }].slice(-100),
-                  }
-                : t
-            ),
-          }
-        }),
+      restoreTask: (id) => {
+        const service = createStoreTaskService(
+          () => get().tasks,
+          (tasks) => set({ tasks }),
+          (status) => isDoneStatus(status, get().settings),
+        )
+        service.restore(id)
+      },
 
-      removeTask: (id) =>
-        set((s) => {
-          const now = nowISO()
-          return {
-            tasks: s.tasks.map((t) =>
-              t.id === id
-                ? {
-                    ...t,
-                    deletedAt: now,
-                    updatedAt: now,
-                    history: [...(t.history ?? []), { at: now, change: "Задача перемещена в корзину" }].slice(-100),
-                  }
-                : t
-            ),
-          }
-        }),
+      removeTask: (id) => {
+        const service = createStoreTaskService(
+          () => get().tasks,
+          (tasks) => set({ tasks }),
+          (status) => isDoneStatus(status, get().settings),
+        )
+        service.moveToTrash(id)
+      },
 
-      permanentlyDeleteTask: (id) =>
-        set((s) => ({
-          tasks: s.tasks
-            .filter((t) => t.id !== id)
-            .map((t) => ({
-              ...t,
-              parentId: t.parentId === id ? undefined : t.parentId,
-              dependsOn: t.dependsOn?.filter((dependencyId) => dependencyId !== id),
-            })),
-        })),
+      permanentlyDeleteTask: (id) => {
+        const service = createStoreTaskService(
+          () => get().tasks,
+          (tasks) => set({ tasks }),
+          (status) => isDoneStatus(status, get().settings),
+        )
+        service.permanentlyDelete(id)
+      },
 
       setTaskParent: (id, parentId) => {
-        const tasks = get().tasks
-        if (!canSetTaskParent(tasks, id, parentId)) return false
-        const now = nowISO()
-        set((s) => ({
-          tasks: s.tasks.map((t) =>
-            t.id === id
-              ? {
-                  ...t,
-                  parentId,
-                  updatedAt: now,
-                  history: [
-                    ...(t.history ?? []),
-                    { at: now, change: parentId ? "Изменена родительская задача" : "Связь с родителем удалена" },
-                  ].slice(-100),
-                }
-              : t
-          ),
-        }))
-        return true
+        const service = createStoreTaskService(
+          () => get().tasks,
+          (tasks) => set({ tasks }),
+          (status) => isDoneStatus(status, get().settings),
+        )
+        return service.setParent(id, parentId)
       },
 
       addTaskDependency: (id, dependencyId) => {
-        const tasks = get().tasks
-        if (!canAddTaskDependency(tasks, id, dependencyId)) return false
-        const now = nowISO()
-        set((s) => ({
-          tasks: s.tasks.map((t) =>
-            t.id === id
-              ? {
-                  ...t,
-                  dependsOn: [...new Set([...(t.dependsOn ?? []), dependencyId])],
-                  updatedAt: now,
-                  history: [...(t.history ?? []), { at: now, change: "Добавлена зависимость" }].slice(-100),
-                }
-              : t
-          ),
-        }))
-        return true
+        const service = createStoreTaskService(
+          () => get().tasks,
+          (tasks) => set({ tasks }),
+          (status) => isDoneStatus(status, get().settings),
+        )
+        return service.addDependency(id, dependencyId)
       },
 
-      removeTaskDependency: (id, dependencyId) =>
-        set((s) => {
-          const now = nowISO()
-          return {
-            tasks: s.tasks.map((t) =>
-              t.id === id
-                ? {
-                    ...t,
-                    dependsOn: (t.dependsOn ?? []).filter((dependency) => dependency !== dependencyId),
-                    updatedAt: now,
-                    history: [...(t.history ?? []), { at: now, change: "Удалена зависимость" }].slice(-100),
-                  }
-                : t
-            ),
-          }
-        }),
+      removeTaskDependency: (id, dependencyId) => {
+        const service = createStoreTaskService(
+          () => get().tasks,
+          (tasks) => set({ tasks }),
+          (status) => isDoneStatus(status, get().settings),
+        )
+        service.removeDependency(id, dependencyId)
+      },
 
       addProject: (input) => {
         const id = nid("proj")
