@@ -212,9 +212,11 @@ export function CalendarPage() {
       previousObserver = new IntersectionObserver((entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return
         if (agendaPrependHeightRef.current !== null) return
+        const increment = Math.min(7, 365 - agendaDayCount)
+        if (increment <= 0) return
         agendaPrependHeightRef.current = root.scrollHeight
-        setAgendaStartDate((start) => addDays(start, -7))
-        setAgendaDayCount((count) => Math.min(365, count + 7))
+        setAgendaStartDate((start) => addDays(start, -increment))
+        setAgendaDayCount((count) => Math.min(365, count + increment))
       }, { root, rootMargin: "140px 0px 0px 0px" })
       previousObserver.observe(topSentinel)
     }
@@ -521,6 +523,9 @@ export function CalendarPage() {
     agendaPrependHeightRef.current = null
     setCursor({ year: now.getFullYear(), month: now.getMonth() })
     setSelectedSlot(null)
+    window.requestAnimationFrame(() => {
+      if (agendaScrollRef.current) agendaScrollRef.current.scrollTop = 0
+    })
   }
 
   const setCalendarView = (nextView: CalendarView) => {
@@ -537,10 +542,12 @@ export function CalendarPage() {
   }
 
   const loadPreviousAgendaDays = () => {
+    const increment = Math.min(7, 365 - agendaDayCount)
+    if (increment <= 0) return
     const container = agendaScrollRef.current
     if (container && agendaPrependHeightRef.current === null) agendaPrependHeightRef.current = container.scrollHeight
-    setAgendaStartDate((start) => addDays(start, -7))
-    setAgendaDayCount((count) => Math.min(365, count + 7))
+    setAgendaStartDate((start) => addDays(start, -increment))
+    setAgendaDayCount((count) => Math.min(365, count + increment))
     setAgendaHasScrolled(true)
   }
 
@@ -1190,6 +1197,9 @@ export function CalendarPage() {
     setShowComposer(false)
     const date = parseISODate(day)
     setCursor({ year: date.getFullYear(), month: date.getMonth() })
+    window.requestAnimationFrame(() => {
+      if (agendaScrollRef.current) agendaScrollRef.current.scrollTop = 0
+    })
   }
 
   const shiftMiniCalendarMonth = (direction: -1 | 1) => {
