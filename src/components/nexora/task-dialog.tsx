@@ -160,7 +160,14 @@ export function TaskDialog() {
                 updateTask(task.id, {
                   repeat: frequency === "daily" || frequency === "weekly" ? frequency : undefined,
                   recurrenceRule: frequency
-                    ? { frequency, interval: task.recurrenceRule?.interval ?? 1, until: task.recurrenceRule?.until }
+                    ? {
+                        ...task.recurrenceRule,
+                        frequency,
+                        interval: task.recurrenceRule?.interval ?? 1,
+                        until: task.recurrenceRule?.until,
+                        count: task.recurrenceRule?.count,
+                        weekdays: frequency === "weekly" ? task.recurrenceRule?.weekdays : undefined,
+                      }
                     : undefined,
                 })
               }}
@@ -187,6 +194,45 @@ export function TaskDialog() {
               />
             )}
           </div>
+          {task.recurrenceRule?.frequency === "weekly" && (
+            <div className="mt-2">
+              <label className="text-xs text-muted">Дни недели (если не выбраны — обычное повторение раз в N недель)</label>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {[
+                  { value: 1, label: "Пн" },
+                  { value: 2, label: "Вт" },
+                  { value: 3, label: "Ср" },
+                  { value: 4, label: "Чт" },
+                  { value: 5, label: "Пт" },
+                  { value: 6, label: "Сб" },
+                  { value: 0, label: "Вс" },
+                ].map((day) => {
+                  const selected = task.recurrenceRule?.weekdays ?? []
+                  const checked = selected.includes(day.value)
+                  return (
+                    <label key={day.value} className="flex items-center gap-1.5 rounded-md border border-white/10 px-2 py-1 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          const weekdays = e.target.checked
+                            ? [...selected, day.value].sort((a, b) => a - b)
+                            : selected.filter((value) => value !== day.value)
+                          updateTask(task.id, {
+                            recurrenceRule: {
+                              ...task.recurrenceRule!,
+                              weekdays: weekdays.length ? weekdays : undefined,
+                            },
+                          })
+                        }}
+                      />
+                      {day.label}
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          )}
           {task.recurrenceRule && (
             <div>
               <label className="text-xs text-muted">Повторять до (необязательно)</label>
