@@ -1,9 +1,218 @@
+import { useState } from "react"
 import { useNexora } from "@/lib/nexora/store"
 import { CURRENT_SCHEMA_VERSION } from "@/lib/nexora/migrate"
 import type { ThemeMode, TaskStatus, Priority } from "@/lib/nexora/types"
-import { STATUS_LABEL, PRIORITY_LABEL } from "@/lib/nexora/copy"
+import {
+  getActiveTaskStatuses,
+  getActiveTaskPriorities,
+  getTaskStatusDefinitions,
+  getTaskPriorityDefinitions,
+  defaultTaskStatuses,
+  defaultTaskPriorities,
+} from "@/lib/nexora/copy"
+import type { StatusDefinition, PriorityDefinition } from "@/lib/nexora/types"
 import { Button, Card, Input, Select } from "./ui"
 import { AutomationSettingsCard } from "./automation-settings"
+
+
+function moveItem<T extends { order: number }>(items: T[], index: number, dir: -1 | 1): T[] {
+  const next = index + dir
+  if (next < 0 || next >= items.length) return items
+  const copy = [...items]
+  const tmp = copy[index]
+  copy[index] = copy[next]
+  copy[next] = tmp
+  return copy.map((item, order) => ({ ...item, order }))
+}
+
+function StatusCatalogEditor() {
+  const settings = useNexora((s) => s.settings)
+  const updateSettings = useNexora((s) => s.updateSettings)
+  const statuses = getTaskStatusDefinitions(settings)
+  const [newLabel, setNewLabel] = useState("")
+  const [newCategory, setNewCategory] = useState<StatusDefinition["category"]>("open")
+
+  const commit = (next: StatusDefinition[]) => {
+    updateSettings({
+      taskStatuses: next.map((s, order) => ({ ...s, order })),
+      taskStatusLabels: Object.fromEntries(next.map((s) => [s.id, s.label])),
+    })
+  }
+
+  const addCustom = () => {
+    const label = newLabel.trim()
+    if (!label) return
+    const id = `custom_${label.toLowerCase().replace(/[^a-z0-9а-яё]+/gi, "_").replace(/^_|_$/g, "") || "status"}_${Date.now().toString(36).slice(-4)}`
+    commit([
+      ...statuses,
+      { id, label, category: newCategory, order: statuses.length, builtin: false },
+    ])
+    setNewLabel("")
+    setNewCategory("open")
+  }
+
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-medium">Статусы</h3>
+      {statuses.map((status, index) => (
+        <div key={status.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-2">
+          <Input
+            className="min-w-[8rem] flex-1"
+            value={status.label}
+            onChange={(e) => {
+              const label = e.target.value
+              commit(statuses.map((s) => (s.id === status.id ? { ...s, label } : s)))
+            }}
+          />
+          <Select
+            value={status.category}
+            onChange={(e) => {
+              const category = e.target.value as StatusDefinition["category"]
+              commit(statuses.map((s) => (s.id === status.id ? { ...s, category } : s)))
+            }}
+            className="w-auto"
+          >
+            <option value="open">Открытый</option>
+            <option value="done">Завершён</option>
+            <option value="cancelled">Отмена</option>
+          </Select>
+          <Button size="sm" variant="ghost" onClick={() => commit(moveItem(statuses, index, -1))} disabled={index === 0}>
+            ↑
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => commit(moveItem(statuses, index, 1))} disabled={index === statuses.length - 1}>
+            ↓
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() =>
+              commit(statuses.map((s) => (s.id === status.id ? { ...s, hidden: !s.hidden } : s)))
+            }
+          >
+            {status.hidden ? "Показать" : "Скрыть"}
+          </Button>
+          {!status.builtin && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => commit(statuses.filter((s) => s.id !== status.id))}
+            >
+              Удалить
+            </Button>
+          )}
+          <span className="text-[10px] text-muted">{status.id}</span>
+        </div>
+      ))}
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <Input
+          className="min-w-[8rem] flex-1"
+          placeholder="Новый статус"
+          value={newLabel}
+          onChange={(e) => setNewLabel(e.target.value)}
+        />
+        <Select
+          value={newCategory}
+          onChange={(e) => setNewCategory(e.target.value as StatusDefinition["category"])}
+          className="w-auto"
+        >
+          <option value="open">Открытый</option>
+          <option value="done">Завершён</option>
+          <option value="cancelled">Отмена</option>
+        </Select>
+        <Button size="sm" onClick={addCustom} disabled={!newLabel.trim()}>
+          Добавить
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => commit(defaultTaskStatuses())}
+        >
+          Сбросить статусы
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function PriorityCatalogEditor() {
+  const settings = useNexora((s) => s.settings)
+  const updateSettings = useNexora((s) => s.updateSettings)
+  const priorities = getTaskPriorityDefinitions(settings)
+  const [newLabel, setNewLabel] = useState("")
+
+  const commit = (next: PriorityDefinition[]) => {
+    updateSettings({
+      taskPriorities: next.map((p, order) => ({ ...p, order })),
+      taskPriorityLabels: Object.fromEntries(next.map((p) => [p.id, p.label])),
+    })
+  }
+
+  const addCustom = () => {
+    const label = newLabel.trim()
+    if (!label) return
+    const id = `custom_${label.toLowerCase().replace(/[^a-z0-9а-яё]+/gi, "_").replace(/^_|_$/g, "") || "priority"}_${Date.now().toString(36).slice(-4)}`
+    commit([...priorities, { id, label, order: priorities.length, builtin: false }])
+    setNewLabel("")
+  }
+
+  return (
+    <div className="space-y-2 border-t border-border pt-3">
+      <h3 className="text-sm font-medium">Приоритеты</h3>
+      {priorities.map((priority, index) => (
+        <div key={priority.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-2">
+          <Input
+            className="min-w-[8rem] flex-1"
+            value={priority.label}
+            onChange={(e) => {
+              const label = e.target.value
+              commit(priorities.map((p) => (p.id === priority.id ? { ...p, label } : p)))
+            }}
+          />
+          <Button size="sm" variant="ghost" onClick={() => commit(moveItem(priorities, index, -1))} disabled={index === 0}>
+            ↑
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => commit(moveItem(priorities, index, 1))} disabled={index === priorities.length - 1}>
+            ↓
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() =>
+              commit(priorities.map((p) => (p.id === priority.id ? { ...p, hidden: !p.hidden } : p)))
+            }
+          >
+            {priority.hidden ? "Показать" : "Скрыть"}
+          </Button>
+          {!priority.builtin && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => commit(priorities.filter((p) => p.id !== priority.id))}
+            >
+              Удалить
+            </Button>
+          )}
+          <span className="text-[10px] text-muted">{priority.id}</span>
+        </div>
+      ))}
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <Input
+          className="min-w-[8rem] flex-1"
+          placeholder="Новый приоритет"
+          value={newLabel}
+          onChange={(e) => setNewLabel(e.target.value)}
+        />
+        <Button size="sm" onClick={addCustom} disabled={!newLabel.trim()}>
+          Добавить
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => commit(defaultTaskPriorities())}>
+          Сбросить приоритеты
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 
 export function SettingsPage() {
   const settings = useNexora((s) => s.settings)
@@ -88,53 +297,15 @@ export function SettingsPage() {
       <Card className="p-4 space-y-4">
         <div>
           <h2 className="font-medium">Статусы и приоритеты задач</h2>
-          <p className="mt-1 text-xs text-muted">Можно переименовать стандартные значения. Ключи внутри системы остаются прежними.</p>
+          <p className="mt-1 text-xs text-muted">
+            Можно переименовывать, скрывать, менять порядок и добавлять свои статусы и приоритеты.
+            Скрытые значения не показываются в списках, но остаются на уже существующих задачах.
+          </p>
         </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {(["inbox", "planned", "in_progress", "waiting", "done", "cancelled"] as TaskStatus[]).map((key) => {
-            const fallback = STATUS_LABEL[key]
-            return (
-              <div key={key}>
-                <label className="text-xs text-muted" htmlFor={"task-status-" + key}>{fallback}</label>
-                <Input
-                  id={"task-status-" + key}
-                  value={settings.taskStatusLabels?.[key] ?? fallback}
-                  onChange={(event) =>
-                    updateSettings({
-                      taskStatusLabels: { ...settings.taskStatusLabels, [key]: event.target.value },
-                    })
-                  }
-                />
-              </div>
-            )
-          })}
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {(["none", "low", "medium", "high", "critical"] as Priority[]).map((key) => {
-            const fallback = PRIORITY_LABEL[key]
-            return (
-              <div key={key}>
-                <label className="text-xs text-muted" htmlFor={"task-priority-" + key}>{fallback}</label>
-                <Input
-                  id={"task-priority-" + key}
-                  value={settings.taskPriorityLabels?.[key] ?? fallback}
-                  onChange={(event) =>
-                    updateSettings({
-                      taskPriorityLabels: { ...settings.taskPriorityLabels, [key]: event.target.value },
-                    })
-                  }
-                />
-              </div>
-            )
-          })}
-        </div>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => updateSettings({ taskStatusLabels: {}, taskPriorityLabels: {} })}
-        >
-          Сбросить названия
-        </Button>
+
+        <StatusCatalogEditor />
+
+        <PriorityCatalogEditor />
       </Card>
 
       <AutomationSettingsCard />
