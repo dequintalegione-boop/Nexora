@@ -8,7 +8,8 @@ import { createTaskDomainEvent, taskEventBus } from "./task-events"
 import type { CreateTaskDomainEventInput } from "./task-events"
 import { createTaskRepository } from "./task-repository"
 import { createTaskService } from "./task-service"
-import { getTasksDueForAutomation, getTasksDueSoonForAutomation, runTaskAutomations } from "./automations"
+import { getTasksDueForAutomation, getTasksDueSoonForAutomation } from "./automations"
+import { TaskAutomationEventAdapter } from "./automation-event-adapter"
 import { CURRENT_SCHEMA_VERSION, migratePersistedData } from "./migrate"
 import type { TaskAutomationRule } from "./automations"
 import { buildNextTaskOccurrence, updateRecurrenceSeriesTasks } from "./task-logic"
@@ -264,14 +265,7 @@ export const useNexora = create<Store>()(
         }
         const repository = createTaskRepository(
           () => get().tasks,
-          (tasks) => {
-            const event = { type: "task.created" as const, taskId: id, eventId: nid("event"), occurredAt: now }
-            const result = runTaskAutomations(tasks, get().automationRules ?? [], event)
-            set({
-              tasks: result.tasks,
-              automationRuns: [...result.runs, ...(get().automationRuns ?? [])].slice(0, 200),
-            })
-          },
+          (tasks) => set({ tasks }),
         )
         const service = createTaskService(repository, taskEventBus, {
           now: nowISO,
@@ -332,22 +326,7 @@ export const useNexora = create<Store>()(
             }
           }
 
-          const statusEvent = { type: "task.status_changed" as const, taskId: id, eventId: nid("event"), occurredAt: now }
-          const statusResult = runTaskAutomations(nextTasks, s.automationRules ?? [], statusEvent)
-          const completionResult =
-            isDoneStatus(statusResult.tasks.find((task) => task.id === id)?.status ?? "", s.settings) &&
-            !isDoneStatus(current.status, s.settings)
-              ? runTaskAutomations(statusResult.tasks, s.automationRules ?? [], {
-                  type: "task.completed",
-                  taskId: id,
-                  eventId: nid("event"),
-                  occurredAt: now,
-                })
-              : { tasks: statusResult.tasks, runs: [] }
-          return {
-            tasks: completionResult.tasks,
-            automationRuns: [...completionResult.runs, ...statusResult.runs, ...(s.automationRuns ?? [])].slice(0, 200),
-          }
+          return { tasks: nextTasks }
         })
 
         const after = get().tasks.find((task) => task.id === id)
@@ -1197,62 +1176,50 @@ export const useNexora = create<Store>()(
       runDueAutomations: () => {
         const state = get()
         const nowDate = new Date()
+        const now = nowISO()
+        const today = nowDate.toISOString().slice(0, 10)
         const rules = state.automationRules ?? []
-        const priorRuns = state.automationRuns ?? []
 
-        const dueCandidates = getTasksDueForAutomation(state.tasks, priorRuns, nowDate)
+        const dueRules = rules.filter((rule) => rule.enabled && rule.trigger === "task.due")
+        if (dueRules.length > 0) {
+          for (const task of getTasksDueForAutomation(state.tasks, state.automationRuns ?? [], nowDate)) {
+            const eventId = `automation:task.due:${task.id}:${today}`
+            publishStoreTaskEvent({
+              type: "task.due",
+              entityId: task.id,
+              after: task,
+              source: "system",
+              correlationId: eventId,
+              eventId,
+              occurredAt: now,
+              metadata: { dueDate: task.dueDate ?? null },
+            })
+          }
+        }
 
+        const dueSoonRules = rules.filter((rule) => rule.enabled && rule.trigger === "task.due_soon")
+        if (dueSoonRules.length === 0) return
         const dueSoonIds = new Set<string>()
-        const dueSoonRules = rules.filter((r) => r.enabled && r.trigger === "task.due_soon")
         for (const rule of dueSoonRules) {
           const days = rule.daysBefore ?? 1
-          for (const task of getTasksDueSoonForAutomation(state.tasks, priorRuns, days, nowDate)) {
+          for (const task of getTasksDueSoonForAutomation(state.tasks, state.automationRuns ?? [], days, nowDate)) {
             dueSoonIds.add(task.id)
           }
         }
-        const dueSoonCandidates = state.tasks.filter((t) => dueSoonIds.has(t.id))
-
-        if (dueCandidates.length === 0 && dueSoonCandidates.length === 0) return
-
-        let tasks = state.tasks
-        const allRuns = [...priorRuns]
-        const now = nowISO()
-
-        for (const task of dueCandidates) {
-          const result = runTaskAutomations(tasks, rules, {
-            type: "task.due",
-            taskId: task.id,
-            eventId: nid("event"),
-            occurredAt: now,
-          })
-          tasks = result.tasks
-          allRuns.unshift(...result.runs)
-        }
-
-        for (const task of dueSoonCandidates) {
-          const today = nowDate.toISOString().slice(0, 10)
-          const matchingRules = rules.filter((rule) => {
-            if (!rule.enabled || rule.trigger !== "task.due_soon") return false
-            if (!task.dueDate || task.dueDate <= today) return false
-            const days = rule.daysBefore ?? 1
-            const horizon = new Date(`${today}T00:00:00.000Z`)
-            horizon.setUTCDate(horizon.getUTCDate() + Math.max(1, Math.floor(days) || 1))
-            return task.dueDate <= horizon.toISOString().slice(0, 10)
-          })
-          const result = runTaskAutomations(tasks, matchingRules, {
+        for (const task of state.tasks) {
+          if (!dueSoonIds.has(task.id)) continue
+          const eventId = `automation:task.due_soon:${task.id}:${today}`
+          publishStoreTaskEvent({
             type: "task.due_soon",
-            taskId: task.id,
-            eventId: nid("event"),
+            entityId: task.id,
+            after: task,
+            source: "system",
+            correlationId: eventId,
+            eventId,
             occurredAt: now,
+            metadata: { dueDate: task.dueDate ?? null },
           })
-          tasks = result.tasks
-          allRuns.unshift(...result.runs)
         }
-
-        set({
-          tasks,
-          automationRuns: allRuns.slice(0, 200),
-        })
       },
     }),
     {
@@ -1274,3 +1241,32 @@ export const useNexora = create<Store>()(
     }
   )
 )
+
+
+// Bridge committed task-domain events into the automation engine.
+// Events emitted by automation actions are ignored by the adapter to prevent recursion.
+const taskAutomationEventAdapter = new TaskAutomationEventAdapter(taskEventBus, {
+  getState: () => {
+    const state = useNexora.getState()
+    return {
+      tasks: state.tasks,
+      automationRules: state.automationRules ?? [],
+      automationRuns: state.automationRuns ?? [],
+    }
+  },
+  commit: (tasks, automationRuns) => useNexora.setState({ tasks, automationRuns }),
+  publishCommittedChange: (before, after, event) => {
+    const service = createStoreTaskService(
+      () => useNexora.getState().tasks,
+      (tasks) => useNexora.setState({ tasks }),
+      (status) => isDoneStatus(status, useNexora.getState().settings),
+    )
+    service.publishCommittedChange(
+      before,
+      after,
+      { source: "automation", correlationId: event.correlationId },
+      event.occurredAt,
+    )
+  },
+})
+taskAutomationEventAdapter.start()
