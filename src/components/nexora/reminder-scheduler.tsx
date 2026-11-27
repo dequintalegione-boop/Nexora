@@ -3,18 +3,32 @@ import { useNexora } from "@/lib/nexora/store"
 import { getDueTaskReminders } from "@/lib/nexora/reminders"
 
 /**
- * Browser notifications are delivered while Nexora is open.
- * A closed browser cannot run this local scheduler; reliable closed-app delivery
+ * Local scheduler that runs while Nexora is open:
+ * - due-date automation rules (task.due)
+ * - browser notifications for task reminders (when permission granted)
+ *
+ * A closed browser cannot run this scheduler; reliable closed-app delivery
  * requires a push service and server-side subscription management.
  */
 export function ReminderScheduler() {
-  const enabled = useNexora((state) => state.settings.notificationsEnabled)
+  const notificationsEnabled = useNexora((state) => state.settings.notificationsEnabled)
 
   useEffect(() => {
-    if (!enabled || typeof window === "undefined" || !("Notification" in window)) return
+    if (typeof window === "undefined") return
 
-    const checkReminders = () => {
-      if (Notification.permission !== "granted") return
+    const tick = () => {
+      // Always evaluate due-date automations while the app is open
+      try {
+        useNexora.getState().runDueAutomations()
+      } catch (error) {
+        console.error("Nexora due automations failed:", error)
+      }
+
+      // Notifications are optional and require permission
+      if (!notificationsEnabled || !("Notification" in window) || Notification.permission !== "granted") {
+        return
+      }
+
       const now = Date.now()
       const due = getDueTaskReminders(useNexora.getState().tasks, now)
 
@@ -38,7 +52,7 @@ export function ReminderScheduler() {
             reminders: currentTask.reminders?.map((reminder) =>
               reminder.id === currentReminder.id
                 ? { ...reminder, lastTriggeredAt: triggeredAt }
-                : reminder
+                : reminder,
             ),
           })
         } catch (error) {
@@ -47,10 +61,10 @@ export function ReminderScheduler() {
       }
     }
 
-    checkReminders()
-    const intervalId = window.setInterval(checkReminders, 15_000)
+    tick()
+    const intervalId = window.setInterval(tick, 15_000)
     const handleVisibility = () => {
-      if (document.visibilityState === "visible") checkReminders()
+      if (document.visibilityState === "visible") tick()
     }
     document.addEventListener("visibilitychange", handleVisibility)
 
@@ -58,7 +72,7 @@ export function ReminderScheduler() {
       window.clearInterval(intervalId)
       document.removeEventListener("visibilitychange", handleVisibility)
     }
-  }, [enabled])
+  }, [notificationsEnabled])
 
   return null
 }
