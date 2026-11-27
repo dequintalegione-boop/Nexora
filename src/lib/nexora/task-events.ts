@@ -26,7 +26,10 @@ export type TaskDomainEventType =
   | "recurring.instance.completed"
   | "recurring.instance.skipped"
   | "time.started"
+  | "time.paused"
+  | "time.resumed"
   | "time.stopped"
+  | "time.session.corrected"
   | "pomodoro.started"
   | "pomodoro.completed"
   | "pomodoro.interrupted"
@@ -61,7 +64,7 @@ export interface TaskDomainEvent {
   eventId: string
   type: TaskDomainEventType
   occurredAt: string
-  entityType: "task" | "time_session" | "pomodoro" | "reminder"
+  entityType: "task" | "timer" | "time_session" | "pomodoro" | "reminder"
   entityId: string
   before?: TaskEventSnapshot
   after?: TaskEventSnapshot

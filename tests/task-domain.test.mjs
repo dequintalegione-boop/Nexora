@@ -225,3 +225,85 @@ test("task service validates parent/dependency cycles and removes broken links o
   assert.equal(harness.repository.getById("child")?.parentId, undefined)
   assert.deepEqual(harness.repository.getById("child")?.dependsOn, [])
 })
+
+
+test("time tracking and Pomodoro lifecycle events share stable correlation IDs", () => {
+  const bus = new TaskEventBus()
+  const received = []
+  bus.subscribe((event) => received.push(event))
+
+  const lifecycle = [
+    {
+      eventId: "time-start",
+      type: "time.started",
+      entityType: "timer",
+      entityId: "timer-1",
+      metadata: { timerId: "timer-1", taskId: "task-1", kind: "focus" },
+    },
+    {
+      eventId: "time-pause",
+      type: "time.paused",
+      entityType: "timer",
+      entityId: "timer-1",
+      metadata: { timerId: "timer-1", reason: "user" },
+    },
+    {
+      eventId: "time-resume",
+      type: "time.resumed",
+      entityType: "timer",
+      entityId: "timer-1",
+      metadata: { timerId: "timer-1" },
+    },
+    {
+      eventId: "time-stop",
+      type: "time.stopped",
+      entityType: "time_session",
+      entityId: "session-1",
+      metadata: { timerId: "timer-1", durationMinutes: 25 },
+    },
+    {
+      eventId: "session-corrected",
+      type: "time.session.corrected",
+      entityType: "time_session",
+      entityId: "session-1",
+      metadata: { previousDurationMinutes: 25, durationMinutes: 30, durationDeltaMinutes: 5 },
+    },
+    {
+      eventId: "pomodoro-start",
+      type: "pomodoro.started",
+      entityType: "pomodoro",
+      entityId: "pomodoro-1",
+      metadata: { phase: "focus", phaseDurationMs: 1_500_000 },
+    },
+    {
+      eventId: "pomodoro-complete",
+      type: "pomodoro.completed",
+      entityType: "pomodoro",
+      entityId: "pomodoro-1",
+      metadata: { phase: "focus", sessionId: "session-1" },
+    },
+    {
+      eventId: "pomodoro-interrupt",
+      type: "pomodoro.interrupted",
+      entityType: "pomodoro",
+      entityId: "pomodoro-2",
+      metadata: { phase: "short_break", reason: "timer_stopped" },
+    },
+  ]
+
+  for (const item of lifecycle) {
+    assert.equal(bus.publish(createTaskDomainEvent({
+      ...item,
+      source: "timer",
+      correlationId: "pomodoro-1",
+      occurredAt: "2026-01-02T10:00:00.000Z",
+    })), true)
+  }
+
+  assert.deepEqual(received.map((event) => event.type), lifecycle.map((event) => event.type))
+  assert.ok(received.every((event) => event.source === "timer"))
+  assert.ok(received.every((event) => event.correlationId === "pomodoro-1"))
+  assert.equal(received[0].entityType, "timer")
+  assert.equal(received[3].entityType, "time_session")
+  assert.equal(received[5].entityType, "pomodoro")
+})

@@ -265,6 +265,10 @@ export interface TimeSession {
 }
 
 export interface ActiveTimer {
+  /** Stable ID for the current timer phase; absent on legacy persisted timers. */
+  timerId?: ID
+  /** Stable ID shared by all phases of one Pomodoro sequence. */
+  pomodoroId?: ID
   kind: SessionKind
   startedAt: string
   sessionStartedAt?: string

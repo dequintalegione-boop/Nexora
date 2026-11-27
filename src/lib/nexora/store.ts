@@ -710,9 +710,12 @@ export const useNexora = create<Store>()(
 
       startTimer: (input) => {
         const now = nowISO()
+        const timerId = nid("timer")
+        const kind = input?.kind ?? "focus"
         set({
           activeTimer: {
-            kind: input?.kind ?? "focus",
+            timerId,
+            kind,
             startedAt: now,
             sessionStartedAt: now,
             taskId: input?.taskId,
@@ -720,13 +723,31 @@ export const useNexora = create<Store>()(
             accumulatedMs: 0,
           },
         })
+        publishStoreTaskEvent({
+          type: "time.started",
+          entityType: "timer",
+          entityId: timerId,
+          source: "timer",
+          correlationId: timerId,
+          metadata: {
+            timerId,
+            taskId: input?.taskId ?? null,
+            kind,
+            startedAt: now,
+          },
+        })
       },
 
       startPomodoro: (input) => {
         const now = nowISO()
+        const timerId = nid("timer")
+        const pomodoroId = nid("pomodoro")
         const config = normalizePomodoroSettings(get().settings.pomodoro)
+        const phaseDurationMs = getPomodoroPhaseDurationMs("focus", config)
         set({
           activeTimer: {
+            timerId,
+            pomodoroId,
             kind: "focus",
             startedAt: now,
             sessionStartedAt: now,
@@ -736,10 +757,40 @@ export const useNexora = create<Store>()(
             pomodoro: {
               phase: "focus",
               completedFocusCycles: 0,
-              phaseDurationMs: getPomodoroPhaseDurationMs("focus", config),
+              phaseDurationMs,
               cyclesBeforeLongBreak: config.cyclesBeforeLongBreak,
               autoStartNext: config.autoStartNext,
             },
+          },
+        })
+        publishStoreTaskEvent({
+          type: "time.started",
+          entityType: "timer",
+          entityId: timerId,
+          source: "timer",
+          correlationId: pomodoroId,
+          metadata: {
+            timerId,
+            pomodoroId,
+            taskId: input?.taskId ?? null,
+            kind: "focus",
+            phase: "focus",
+            startedAt: now,
+          },
+        })
+        publishStoreTaskEvent({
+          type: "pomodoro.started",
+          entityType: "pomodoro",
+          entityId: pomodoroId,
+          source: "timer",
+          correlationId: pomodoroId,
+          metadata: {
+            timerId,
+            taskId: input?.taskId ?? null,
+            phase: "focus",
+            phaseDurationMs,
+            cyclesBeforeLongBreak: config.cyclesBeforeLongBreak,
+            autoStartNext: config.autoStartNext,
           },
         })
       },
@@ -759,11 +810,29 @@ export const useNexora = create<Store>()(
 
         // Without auto-start, pause at the exact phase boundary and wait for confirmation.
         if (!force && !plan.autoStartNext) {
+          const pausedAt = nowISO()
           set({
             activeTimer: {
               ...current,
-              pausedAt: nowISO(),
+              pausedAt,
               accumulatedMs: plan.phaseDurationMs,
+            },
+          })
+          const timerId = current.timerId ?? current.sessionStartedAt ?? current.startedAt
+          const correlationId = current.pomodoroId ?? timerId
+          publishStoreTaskEvent({
+            type: "time.paused",
+            entityType: "timer",
+            entityId: timerId,
+            source: "timer",
+            correlationId,
+            metadata: {
+              timerId,
+              pomodoroId: current.pomodoroId ?? null,
+              taskId: current.taskId ?? null,
+              phase: plan.phase,
+              reason: "phase_boundary",
+              pausedAt,
             },
           })
           return
@@ -797,7 +866,11 @@ export const useNexora = create<Store>()(
           : next.phase === "long_break"
             ? "Pomodoro · Длинный перерыв"
             : "Pomodoro · Короткий перерыв"
+        const nextTimerId = nid("timer")
+        const pomodoroId = current.pomodoroId ?? current.timerId ?? current.sessionStartedAt ?? current.startedAt
         const nextActive = {
+          timerId: nextTimerId,
+          pomodoroId,
           kind: nextKind,
           startedAt: now,
           sessionStartedAt: now,
@@ -830,33 +903,118 @@ export const useNexora = create<Store>()(
             activeTimer: nextActive,
           }
         })
+
+        const currentTimerId = current.timerId ?? current.sessionStartedAt ?? current.startedAt
+        const pomodoroCorrelationId = current.pomodoroId ?? currentTimerId
+        if (session) {
+          publishStoreTaskEvent({
+            type: "time.stopped",
+            entityType: "time_session",
+            entityId: session.id,
+            source: "timer",
+            correlationId: pomodoroCorrelationId,
+            metadata: {
+              timerId: currentTimerId,
+              pomodoroId: current.pomodoroId ?? null,
+              taskId: session.taskId ?? null,
+              kind: session.kind,
+              durationMinutes: session.durationMinutes,
+              phase: plan.phase,
+              sessionSaved: true,
+            },
+          })
+        }
+        publishStoreTaskEvent({
+          type: reachedEnd ? "pomodoro.completed" : "pomodoro.interrupted",
+          entityType: "pomodoro",
+          entityId: pomodoroCorrelationId,
+          source: "timer",
+          correlationId: pomodoroCorrelationId,
+          metadata: {
+            timerId: currentTimerId,
+            taskId: current.taskId ?? null,
+            phase: plan.phase,
+            durationMs: recordedMs,
+            plannedDurationMs: plan.phaseDurationMs,
+            sessionId: session?.id ?? null,
+            completedFocusCycles: plan.completedFocusCycles,
+            reason: reachedEnd ? "phase_completed" : "skipped",
+          },
+        })
+        publishStoreTaskEvent({
+          type: "time.started",
+          entityType: "timer",
+          entityId: nextTimerId,
+          source: "timer",
+          correlationId: pomodoroCorrelationId,
+          metadata: {
+            timerId: nextTimerId,
+            pomodoroId: pomodoroCorrelationId,
+            taskId: current.taskId ?? null,
+            kind: nextKind,
+            phase: next.phase,
+            startedAt: now,
+          },
+        })
       },
 
-      pauseTimer: () =>
-        set((s) => {
-          if (!s.activeTimer || s.activeTimer.pausedAt) return s
-          const started = new Date(s.activeTimer.startedAt).getTime()
-          const accumulated = (s.activeTimer.accumulatedMs ?? 0) + (Date.now() - started)
-          return {
-            activeTimer: {
-              ...s.activeTimer,
-              pausedAt: nowISO(),
-              accumulatedMs: accumulated,
-            },
-          }
-        }),
+      pauseTimer: () => {
+        const current = get().activeTimer
+        if (!current || current.pausedAt) return
+        const now = nowISO()
+        const started = new Date(current.startedAt).getTime()
+        const accumulated = (current.accumulatedMs ?? 0) + (Date.now() - started)
+        set({
+          activeTimer: {
+            ...current,
+            timerId: current.timerId ?? current.sessionStartedAt ?? current.startedAt,
+            pausedAt: now,
+            accumulatedMs: accumulated,
+          },
+        })
+        const timerId = current.timerId ?? current.sessionStartedAt ?? current.startedAt
+        publishStoreTaskEvent({
+          type: "time.paused",
+          entityType: "timer",
+          entityId: timerId,
+          source: "timer",
+          correlationId: current.pomodoroId ?? timerId,
+          metadata: {
+            timerId,
+            pomodoroId: current.pomodoroId ?? null,
+            taskId: current.taskId ?? null,
+            pausedAt: now,
+          },
+        })
+      },
 
-      resumeTimer: () =>
-        set((s) => {
-          if (!s.activeTimer?.pausedAt) return s
-          return {
-            activeTimer: {
-              ...s.activeTimer,
-              startedAt: nowISO(),
-              pausedAt: undefined,
-            },
-          }
-        }),
+      resumeTimer: () => {
+        const current = get().activeTimer
+        if (!current?.pausedAt) return
+        const now = nowISO()
+        const timerId = current.timerId ?? current.sessionStartedAt ?? current.startedAt
+        set({
+          activeTimer: {
+            ...current,
+            timerId,
+            startedAt: now,
+            pausedAt: undefined,
+          },
+        })
+        publishStoreTaskEvent({
+          type: "time.resumed",
+          entityType: "timer",
+          entityId: timerId,
+          source: "timer",
+          correlationId: current.pomodoroId ?? timerId,
+          metadata: {
+            timerId,
+            pomodoroId: current.pomodoroId ?? null,
+            taskId: current.taskId ?? null,
+            resumedAt: now,
+          },
+        })
+      },
 
       stopTimer: () => {
         const s = get()
@@ -895,15 +1053,56 @@ export const useNexora = create<Store>()(
             tasks,
           }
         })
+        const timerId = s.activeTimer.timerId ?? s.activeTimer.sessionStartedAt ?? s.activeTimer.startedAt
+        const correlationId = s.activeTimer.pomodoroId ?? timerId
+        publishStoreTaskEvent({
+          type: "time.stopped",
+          entityType: "time_session",
+          entityId: session.id,
+          source: "timer",
+          correlationId,
+          metadata: {
+            timerId,
+            pomodoroId: s.activeTimer.pomodoroId ?? null,
+            taskId: session.taskId ?? null,
+            kind: session.kind,
+            durationMinutes: session.durationMinutes,
+            sessionSaved: true,
+            reason: "user_stopped",
+          },
+        })
+        if (s.activeTimer.pomodoro) {
+          const phaseCompleted = ms >= s.activeTimer.pomodoro.phaseDurationMs
+          publishStoreTaskEvent({
+            type: phaseCompleted ? "pomodoro.completed" : "pomodoro.interrupted",
+            entityType: "pomodoro",
+            entityId: correlationId,
+            source: "timer",
+            correlationId,
+            metadata: {
+              timerId,
+              taskId: session.taskId ?? null,
+              phase: s.activeTimer.pomodoro.phase,
+              durationMs: Math.min(ms, s.activeTimer.pomodoro.phaseDurationMs),
+              plannedDurationMs: s.activeTimer.pomodoro.phaseDurationMs,
+              sessionId: session.id,
+              reason: phaseCompleted ? "phase_completed_then_stopped" : "timer_stopped",
+            },
+          })
+        }
         return session.id
       },
 
       updateTimeSession: (id, patch) => {
         let updated = false
+        let previousSession: TimeSession | undefined
+        let updatedSession: TimeSession | undefined
         set((state) => {
           const result = correctTimeSession(state.sessions, id, patch, nowISO())
           if (!result) return state
           updated = true
+          previousSession = result.previous
+          updatedSession = result.updated
           const durationDelta = result.updated.durationMinutes - result.previous.durationMinutes
           const tasks = result.previous.taskId && result.previous.kind === "focus"
             ? state.tasks.map((task) =>
@@ -918,6 +1117,26 @@ export const useNexora = create<Store>()(
             : state.tasks
           return { sessions: result.sessions, tasks }
         })
+        if (updated && previousSession && updatedSession) {
+          publishStoreTaskEvent({
+            type: "time.session.corrected",
+            entityType: "time_session",
+            entityId: id,
+            source: "ui",
+            correlationId: id,
+            metadata: {
+              taskId: updatedSession.taskId ?? null,
+              kind: updatedSession.kind,
+              previousDurationMinutes: previousSession.durationMinutes,
+              durationMinutes: updatedSession.durationMinutes,
+              durationDeltaMinutes: updatedSession.durationMinutes - previousSession.durationMinutes,
+              titleChanged: previousSession.title !== updatedSession.title,
+              timeRangeChanged:
+                previousSession.startedAt !== updatedSession.startedAt ||
+                previousSession.endedAt !== updatedSession.endedAt,
+            },
+          })
+        }
         return updated
       },
 
