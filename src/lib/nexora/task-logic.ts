@@ -139,7 +139,8 @@ export function updateRecurrenceSeriesTasks(
     const belongsToSeries = task.id === seriesId || task.recurrenceParentId === seriesId
     const isEditableOccurrence =
       task.id === seriesId ||
-      (task.status !== "done" &&
+      (task.recurrenceOverride !== true &&
+        task.status !== "done" &&
         task.status !== "cancelled" &&
         !task.archived &&
         !task.deletedAt)
@@ -187,6 +188,7 @@ export function buildMaterializedTaskOccurrence(
     archivedAt: undefined,
     deletedAt: undefined,
     completedAt: undefined,
+    recurrenceOverride: true,
     repeat: undefined,
     recurrenceRule: undefined,
     skippedOccurrences: undefined,
