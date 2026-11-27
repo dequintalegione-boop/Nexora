@@ -1179,3 +1179,33 @@
     min-height: 1.9rem;
   }
 }
+
+
+/* Readable calendar view navigation without forcing narrow layouts to overflow. */
+.nexora-calendar-view-switch {
+  min-width: 0;
+  max-width: min(38rem, 100%);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.nexora-calendar-view-switch::-webkit-scrollbar {
+  display: none;
+}
+
+.nexora-calendar-view-button {
+  flex: 0 0 auto;
+  min-width: max-content;
+  padding-inline: .55rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .nexora-calendar-view-switch {
+    width: 100%;
+    max-width: 100%;
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+}
