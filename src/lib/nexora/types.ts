@@ -74,10 +74,28 @@ export interface HistoryNote {
 
 export type RecurrenceFrequency = "daily" | "weekly" | "monthly" | "yearly"
 
+export interface RecurrenceByDay {
+  /** Sunday = 0, Monday = 1, ... Saturday = 6. */
+  weekday: number
+  /** RFC 5545 ordinal: 1..5 or -1..-5 (last). */
+  ordinal?: number
+}
+
 export interface RecurrenceRule {
   frequency: RecurrenceFrequency
   interval: number
+  /** Legacy weekly selector retained for existing Nexora profiles. */
   weekdays?: number[]
+  /** RFC 5545 BYDAY selectors, including ordinal weekdays for monthly/yearly rules. */
+  byDay?: RecurrenceByDay[]
+  /** RFC 5545 BYMONTHDAY values; negative values count backward from month end. */
+  byMonthDay?: number[]
+  /** RFC 5545 BYMONTH values (1..12). */
+  byMonth?: number[]
+  /** RFC 5545 WKST; Sunday = 0, Monday = 1, ... Saturday = 6. */
+  weekStart?: number
+  /** RFC 5545 EXDATE values, stored as date-only YYYY-MM-DD strings. */
+  excludeDates?: string[]
   count?: number
   until?: string
 }
