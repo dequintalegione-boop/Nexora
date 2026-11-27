@@ -101,6 +101,7 @@ export function TasksPage() {
     setQuickFilter(saved.quickFilter)
     setSearch(saved.search)
     setAdvancedFilter(saved.advancedFilter ?? createTaskFilterGroup())
+    setKanbanGroupBy(saved.kanbanGroupBy ?? "status")
     setLayout(saved.layout)
     if (saved.columns?.length) useUI.setState({ taskTableColumns: saved.columns })
     setView("active")
@@ -109,7 +110,7 @@ export function TasksPage() {
   const handleSaveView = () => {
     const name = viewName.trim()
     if (!name) return
-    saveTaskView({ name, filter, priorityFilter, projectFilter, sortBy, quickFilter, search, layout, columns: taskTableColumns, advancedFilter })
+    saveTaskView({ name, filter, priorityFilter, projectFilter, sortBy, quickFilter, search, layout, columns: taskTableColumns, advancedFilter, kanbanGroupBy })
     setViewName("")
   }
   const selectedTasks = filtered.filter((task) => selectedTaskIds.includes(task.id))
