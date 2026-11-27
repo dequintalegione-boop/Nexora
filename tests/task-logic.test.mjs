@@ -124,3 +124,14 @@ test("weekly recurrence ignores invalid weekday values and falls back safely", (
   const next = buildNextTaskOccurrence(first, "2026-01-05T12:00:00.000Z")
   assert.equal(next?.occurrenceDate, "2026-01-12")
 })
+
+test("skipping an occurrence is carried forward to the next task in the series", () => {
+  const first = task("series", {
+    occurrenceDate: "2026-01-05",
+    recurrenceRule: { frequency: "weekly", interval: 1, weekdays: [1, 3] },
+    skippedOccurrences: ["2025-12-29"],
+  })
+  const next = buildNextTaskOccurrence(first, "2026-01-05T12:00:00.000Z")
+  assert.equal(next?.occurrenceDate, "2026-01-07")
+  assert.deepEqual(next?.skippedOccurrences, ["2025-12-29"])
+})
