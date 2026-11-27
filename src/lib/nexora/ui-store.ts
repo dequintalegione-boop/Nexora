@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware"
 import type { Priority, TaskStatus } from "./types"
 import type { TaskFilterGroup } from "./task-filters"
 import type { KanbanGroupBy } from "./kanban"
+import type { TaskTemplate } from "./task-templates"
 
 export type TaskTableColumn =
   | "title"
@@ -31,19 +32,6 @@ export const TASK_TABLE_COLUMN_LABELS: Record<TaskTableColumn, string> = {
   estimate: "Оценка, мин",
   actual: "Факт, мин",
   updatedAt: "Изменено",
-}
-
-export type TaskTemplate = {
-  id: string
-  name: string
-  title: string
-  description?: string
-  priority: Priority
-  estimatedMinutes?: number
-  projectId?: string
-  tags?: string[]
-  contexts?: string[]
-  links?: { id: string; title: string; url: string }[]
 }
 
 export type SavedTaskView = {
