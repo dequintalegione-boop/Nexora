@@ -129,8 +129,9 @@ export function buildNextTaskOccurrence(task: Task, now: string): Omit<Task, "id
         (weekday) => Number.isInteger(weekday) && weekday >= 0 && weekday <= 6
       )
     : undefined
-  const nextDate = weeklyDays
-    ? getWeeklyOccurrenceDate(baseDate, rule.interval, weeklyDays, occurrenceNumber - 1)
+  const hasWeeklyDays = Boolean(weeklyDays?.length)
+  const nextDate = hasWeeklyDays
+    ? getWeeklyOccurrenceDate(baseDate, rule.interval, weeklyDays!, occurrenceNumber - 1)
     : shiftOccurrenceDate(baseDate, rule.frequency, rule.interval * (occurrenceNumber - 1))
   if (rule.until && nextDate > rule.until) return null
 
@@ -142,7 +143,7 @@ export function buildNextTaskOccurrence(task: Task, now: string): Omit<Task, "id
   )
   const shiftField = (date?: string) =>
     date
-      ? weeklyDays
+      ? hasWeeklyDays
         ? shiftCalendarDays(date, dayOffset)
         : shiftOccurrenceDate(date, rule.frequency, rule.interval * (occurrenceNumber - 1))
       : undefined
