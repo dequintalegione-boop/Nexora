@@ -27,6 +27,18 @@ function addCalendarDays(value: string, amount: number): string {
   ].join("-")
 }
 
+function addCalendarMonths(value: string, amount: number): string {
+  const [year, month, day] = value.split("-").map(Number)
+  const target = new Date(year, month - 1 + amount, 1)
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate()
+  target.setDate(Math.min(day, lastDay))
+  return [
+    target.getFullYear(),
+    String(target.getMonth() + 1).padStart(2, "0"),
+    String(target.getDate()).padStart(2, "0"),
+  ].join("-")
+}
+
 const PRIORITY_TOKENS: Record<string, Priority> = {
   критический: "critical",
   критично: "critical",
@@ -101,6 +113,13 @@ export function parseQuickTaskInput(input: string, today: string): QuickTaskDraf
     const amount = Number(amountText)
     if (amount < 1 || amount > 52) return match
     scheduledDate = addCalendarDays(today, amount * 7)
+    return prefix
+  })
+
+  remaining = remaining.replace(/(^|\\s)через\\s+(\\d{1,2})\\s+(месяц|месяца|месяцев)(?=\\s|$)/giu, (match, prefix: string, amountText: string) => {
+    const amount = Number(amountText)
+    if (amount < 1 || amount > 24) return match
+    scheduledDate = addCalendarMonths(today, amount)
     return prefix
   })
 
