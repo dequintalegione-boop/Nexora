@@ -1,4 +1,5 @@
 import { useNexora } from "@/lib/nexora/store"
+import { CURRENT_SCHEMA_VERSION } from "@/lib/nexora/migrate"
 import type { ThemeMode, TaskStatus, Priority } from "@/lib/nexora/types"
 import { STATUS_LABEL, PRIORITY_LABEL } from "@/lib/nexora/copy"
 import { Button, Card, Input, Select } from "./ui"
@@ -12,7 +13,7 @@ export function SettingsPage() {
   const exportBackup = () => {
     const data = useNexora.getState()
     const backup = {
-      schema: 1,
+      schema: CURRENT_SCHEMA_VERSION,
       exportedAt: new Date().toISOString(),
       directions: data.directions,
       projects: data.projects,
