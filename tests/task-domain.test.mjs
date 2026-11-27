@@ -23,7 +23,7 @@ function makeTask(id, patch = {}) {
   }
 }
 
-function createHarness(initial = []) {
+function createHarness(initial = [], serviceOptions = {}) {
   let tasks = [...initial]
   let sequence = 0
   const repository = createTaskRepository(
@@ -34,6 +34,7 @@ function createHarness(initial = []) {
   const service = createTaskService(repository, bus, {
     now: () => "2026-01-02T10:00:00.000Z",
     createId: (prefix) => prefix + "_" + (++sequence),
+    ...serviceOptions,
   })
   return {
     repository,
@@ -306,4 +307,122 @@ test("time tracking and Pomodoro lifecycle events share stable correlation IDs",
   assert.equal(received[0].entityType, "timer")
   assert.equal(received[3].entityType, "time_session")
   assert.equal(received[5].entityType, "pomodoro")
+})
+
+
+test("task domain events clone safe fields and exclude description and notes", () => {
+  const task = makeTask("safe", {
+    description: "private details",
+    notes: "private notes",
+    tags: ["first"],
+    recurrenceRule: {
+      frequency: "weekly",
+      interval: 1,
+      weekdays: [1, 3],
+    },
+  })
+  const event = createTaskDomainEvent({
+    eventId: "safe-event",
+    type: "task.created",
+    entityId: task.id,
+    after: task,
+  })
+
+  task.tags.push("mutated")
+  task.recurrenceRule.weekdays.push(5)
+
+  assert.deepEqual(event.after.tags, ["first"])
+  assert.deepEqual(event.after.recurrenceRule.weekdays, [1, 3])
+  assert.equal("description" in event.after, false)
+  assert.equal("notes" in event.after, false)
+})
+
+test("task service status command recognises custom completed statuses", () => {
+  const harness = createHarness([makeTask("task-1")], {
+    isDoneStatus: (status) => status === "custom_done",
+  })
+  const events = []
+  harness.bus.subscribe((event) => events.push(event))
+
+  const result = harness.service.setStatus("task-1", "custom_done", {
+    source: "automation",
+    correlationId: "custom-completion",
+  })
+
+  assert.equal(result?.status, "custom_done")
+  assert.equal(result?.completedAt, "2026-01-02T10:00:00.000Z")
+  assert.equal(result?.updatedAt, "2026-01-02T10:00:00.000Z")
+  assert.equal(result?.history?.at(-1)?.at, result?.updatedAt)
+  assert.equal(result?.history?.at(-1)?.change, "Статус → custom_done")
+  assert.deepEqual(events.map((event) => event.type), [
+    "task.updated",
+    "task.status.changed",
+    "task.completed",
+  ])
+  assert.ok(events.every((event) => event.correlationId === "custom-completion"))
+})
+
+test("task service suppresses no-op updates and emits one moved event for a compound move", () => {
+  const harness = createHarness([makeTask("task-1")])
+  const events = []
+  harness.bus.subscribe((event) => events.push(event))
+
+  assert.equal(harness.service.update("task-1", { title: "task-1" }), undefined)
+  assert.equal(events.length, 0)
+
+  harness.service.update("task-1", {
+    scheduledDate: "2026-01-03",
+    projectId: "project-1",
+    parentId: "parent-1",
+  })
+
+  assert.equal(events.filter((event) => event.type === "task.moved").length, 1)
+  assert.deepEqual(
+    events.map((event) => event.type),
+    [
+      "task.updated",
+      "task.scheduled.changed",
+      "task.projects.changed",
+      "task.moved",
+    ],
+  )
+})
+
+test("publishCommittedChange emits only after the outer profile transaction", () => {
+  const harness = createHarness([makeTask("task-1")], {
+    isDoneStatus: (status) => status === "custom_done",
+  })
+  const observed = []
+  harness.bus.subscribe((event) => {
+    observed.push({
+      type: event.type,
+      storedStatus: harness.repository.getById("task-1")?.status,
+      eventStatus: event.after?.status,
+      correlationId: event.correlationId,
+    })
+  })
+
+  const before = harness.repository.getById("task-1")
+  const after = {
+    ...before,
+    status: "custom_done",
+    completedAt: "2026-01-02T10:00:00.000Z",
+    updatedAt: "2026-01-02T10:00:00.000Z",
+  }
+  harness.repository.save(after)
+  const correlationId = harness.service.publishCommittedChange(
+    before,
+    after,
+    { source: "automation" },
+    "2026-01-02T10:00:00.000Z",
+  )
+
+  assert.deepEqual(observed.map((event) => event.type), [
+    "task.updated",
+    "task.status.changed",
+    "task.completed",
+  ])
+  assert.ok(observed.every((event) => event.storedStatus === "custom_done"))
+  assert.ok(observed.every((event) => event.eventStatus === "custom_done"))
+  assert.ok(observed.every((event) => event.correlationId === correlationId))
 })
