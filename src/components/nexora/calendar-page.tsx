@@ -170,7 +170,8 @@ export function CalendarPage() {
       if (!container || !marker) return
       const markerTop = marker.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop
       const targetTop = markerTop - container.clientHeight * 0.34
-      container.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" })
+      const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"
+      container.scrollTo({ top: Math.max(0, targetTop), behavior })
     })
     return () => window.cancelAnimationFrame(frame)
   }, [view, selected, slotStartHour, slotEndHour])
@@ -1270,7 +1271,7 @@ export function CalendarPage() {
         ) : null}
 
         {view === "week" ? (
-          <div ref={calendarScrollRef} className="nexora-calendar-scroll overflow-x-auto">
+          <div ref={calendarScrollRef} className="nexora-calendar-scroll">
             <div style={{ width: `max(100%, calc(3.5rem + ${visibleWeekDays.length} * 9.5rem))` }}>
             <div
               className="nexora-calendar-day-header grid border-b border-white/10 bg-black/25 text-center text-xs"
