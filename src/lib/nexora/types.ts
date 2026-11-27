@@ -89,18 +89,6 @@ export interface Task {
   history?: HistoryNote[]
 }
 
-export interface Project {
-  id: ID
-  createdAt: string
-  updatedAt: string
-  title: string
-  status: ProjectStatus
-  priority: Priority
-  directionId?: string
-  description?: string
-  archived?: boolean
-}
-
 export interface Direction {
   id: ID
   createdAt: string
@@ -109,6 +97,20 @@ export interface Direction {
   color: DirectionColor
   order: number
   description?: string
+}
+
+export interface Project {
+  id: ID
+  createdAt: string
+  updatedAt: string
+  title: string
+  description?: string
+  status: ProjectStatus
+  priority: Priority
+  directionId?: string
+  dueDate?: string
+  archived?: boolean
+  tags?: string[]
 }
 
 export interface Habit {
@@ -122,6 +124,8 @@ export interface Habit {
   schedule: { days: number[] }
   active: boolean
   icon?: string
+  directionId?: string
+  archived?: boolean
 }
 
 export interface HabitLog {
@@ -135,6 +139,12 @@ export interface HabitLog {
   skipReason?: string
 }
 
+export interface Reflection {
+  wentWell?: string
+  improve?: string
+  gratitude?: string
+}
+
 export interface DailyEntry {
   id: ID
   createdAt: string
@@ -145,6 +155,8 @@ export interface DailyEntry {
   notes?: string
   wins?: string
   lessons?: string
+  reflection?: Reflection
+  focus?: string
 }
 
 export interface Goal {
@@ -159,6 +171,7 @@ export interface Goal {
   targetDate?: string
   projectIds?: ID[]
   notes?: string
+  directionId?: string
 }
 
 export interface TimeSession {
