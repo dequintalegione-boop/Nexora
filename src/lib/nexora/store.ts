@@ -15,7 +15,7 @@ import { getTaskReminderTimestamp } from "./reminders"
 import { CURRENT_SCHEMA_VERSION, migratePersistedData } from "./migrate"
 import type { TaskAutomationRule } from "./automations"
 import type { TaskCsvApplyResult, TaskCsvConflictMode } from "./task-csv"
-import { buildNextTaskOccurrence, updateRecurrenceSeriesTasks } from "./task-logic"
+import { buildMaterializedTaskOccurrence, buildNextTaskOccurrence, skipRecurrenceOccurrenceTask, updateRecurrenceSeriesTasks } from "./task-logic"
 import type {
   DailyEntry,
   Direction,
@@ -92,6 +92,8 @@ type Store = Persisted & {
   addTask: (input: Partial<Task> & { title: string }) => string
   importTasks: (tasks: Task[], conflictMode?: TaskCsvConflictMode) => TaskCsvApplyResult
   updateTask: (id: string, patch: Partial<Task>) => void
+  materializeTaskOccurrence: (occurrence: Task) => string | null
+  skipVirtualTaskOccurrence: (seriesId: string, occurrenceDate: string) => boolean
   setTaskStatus: (id: string, status: TaskStatus) => void
   skipTaskOccurrence: (id: string) => boolean
   updateRecurrenceSeries: (id: string, rule?: RecurrenceRule) => number
@@ -313,6 +315,38 @@ export const useNexora = create<Store>()(
         return { created, updated, skipped }
       },
 
+      materializeTaskOccurrence: (occurrence) => {
+        const seriesId = occurrence.recurrenceParentId
+        const occurrenceDate = occurrence.occurrenceDate
+        if (!seriesId || !occurrenceDate) return null
+
+        const tasks = get().tasks
+        const root = tasks.find((task) => task.id === seriesId)
+        if (!root || root.deletedAt || root.archived || (!root.recurrenceRule && !root.repeat)) return null
+
+        const existing = tasks.find((task) =>
+          task.recurrenceParentId === seriesId && task.occurrenceDate === occurrenceDate
+        )
+        if (existing) return existing.id
+
+        const id = nid("task")
+        const now = nowISO()
+        const materialized = buildMaterializedTaskOccurrence(occurrence, id, now)
+        if (!materialized) return null
+
+        const service = createStoreTaskService(
+          () => get().tasks,
+          (nextTasks) => set({ tasks: nextTasks }),
+          (status) => isDoneStatus(status, get().settings),
+        )
+        service.create(materialized, {
+          source: "recurrence",
+          correlationId: id,
+          metadata: { seriesId, occurrenceDate },
+        })
+        return id
+      },
+
       updateTask: (id, patch) => {
         const service = createStoreTaskService(
           () => get().tasks,
@@ -430,6 +464,41 @@ export const useNexora = create<Store>()(
           })
         }
         return updatedCount
+      },
+
+      skipVirtualTaskOccurrence: (seriesId, occurrenceDate) => {
+        const before = get().tasks.find((task) => task.id === seriesId)
+        if (!before) return false
+        const now = nowISO()
+        const result = skipRecurrenceOccurrenceTask(get().tasks, seriesId, occurrenceDate, now)
+        if (result.updatedCount === 0) return false
+
+        set({ tasks: result.tasks })
+        const after = get().tasks.find((task) => task.id === seriesId)
+        if (!after) return false
+
+        const service = createStoreTaskService(
+          () => get().tasks,
+          (nextTasks) => set({ tasks: nextTasks }),
+          (status) => isDoneStatus(status, get().settings),
+        )
+        const correlationId = service.publishCommittedChange(
+          before,
+          after,
+          { source: "recurrence", metadata: { seriesId, occurrenceDate } },
+          now,
+        )
+        publishStoreTaskEvent({
+          type: "recurring.instance.skipped",
+          entityId: seriesId,
+          before,
+          after,
+          source: "recurrence",
+          correlationId,
+          occurredAt: now,
+          metadata: { seriesId, occurrenceDate },
+        })
+        return true
       },
 
       skipTaskOccurrence: (id) => {
