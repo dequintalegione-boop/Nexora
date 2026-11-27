@@ -85,6 +85,29 @@ function shiftOccurrenceDate(date: string, frequency: "daily" | "weekly" | "mont
   return value.toISOString().slice(0, 10)
 }
 
+function getWeeklyOccurrenceDate(date: string, interval: number, weekdays: number[], occurrenceOffset: number): string {
+  const [year, month, day] = date.split("-").map(Number)
+  const base = new Date(Date.UTC(year, month - 1, day, 12))
+  const baseWeekStart = new Date(base)
+  baseWeekStart.setUTCDate(baseWeekStart.getUTCDate() - ((baseWeekStart.getUTCDay() + 6) % 7))
+  const selectedDays = new Set(weekdays.filter((weekday) => Number.isInteger(weekday) && weekday >= 0 && weekday <= 6))
+  if (selectedDays.size === 0 || occurrenceOffset <= 0) return date
+
+  const safeInterval = Math.max(1, Math.floor(interval) || 1)
+  const cursor = new Date(base)
+  let found = 0
+  // Bound the search to avoid an invalid rule creating an endless loop.
+  for (let scanned = 0; scanned < 36600; scanned += 1) {
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+    const daysFromWeekStart = Math.floor((cursor.getTime() - baseWeekStart.getTime()) / 86400000)
+    const weekIndex = Math.floor(daysFromWeekStart / 7)
+    if (weekIndex % safeInterval !== 0 || !selectedDays.has(cursor.getUTCDay())) continue
+    found += 1
+    if (found === occurrenceOffset) return cursor.toISOString().slice(0, 10)
+  }
+  return date
+}
+
 export function buildNextTaskOccurrence(task: Task, now: string): Omit<Task, "id"> | null {
   const rule = task.recurrenceRule ?? (
     task.repeat ? { frequency: task.repeat, interval: 1 } : undefined
@@ -95,7 +118,7 @@ export function buildNextTaskOccurrence(task: Task, now: string): Omit<Task, "id
   if (rule.count != null && occurrenceNumber > rule.count) return null
 
   const baseDate = task.recurrenceStartDate ?? task.occurrenceDate ?? task.scheduledDate ?? task.dueDate ?? now.slice(0, 10)
-  const nextDate = shiftOccurrenceDate(baseDate, rule.frequency, rule.interval * (occurrenceNumber - 1))
+  const weeklyDays = rule.frequency === "weekly" && rule.weekdays?.length\n    ? rule.weekdays\n    : undefined\n  const nextDate = weeklyDays\n    ? getWeeklyOccurrenceDate(baseDate, rule.interval, weeklyDays, occurrenceNumber - 1)\n    : shiftOccurrenceDate(baseDate, rule.frequency, rule.interval * (occurrenceNumber - 1))
   if (rule.until && nextDate > rule.until) return null
 
   const scheduledAnchor = task.recurrenceStartScheduledDate ?? task.scheduledDate
