@@ -71,7 +71,7 @@ function shiftCalendarDateTime(value: string | undefined, days: number): string 
 }
 
 export function buildNextTaskOccurrence(task: Task, now: string): Omit<Task, "id"> | null {
-  const rule = task.recurrenceRule ?? (
+  const rule: RecurrenceRule | undefined = task.recurrenceRule ?? (
     task.repeat ? { frequency: task.repeat, interval: 1 } : undefined
   )
   if (!rule) return null
