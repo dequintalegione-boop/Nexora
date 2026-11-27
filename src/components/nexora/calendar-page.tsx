@@ -179,11 +179,12 @@ export function CalendarPage() {
   useEffect(() => {
     if (!miniCalendarOpen) return
     const frame = window.requestAnimationFrame(() => {
-      const target = miniCalendarRef.current?.querySelector<HTMLButtonElement>("[data-mini-day]")
+      const target = miniCalendarRef.current?.querySelector<HTMLButtonElement>('[data-mini-day="' + selected + '"]')
+        ?? miniCalendarRef.current?.querySelector<HTMLButtonElement>("[data-mini-day]")
       target?.focus()
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [miniCalendarOpen])
+  }, [miniCalendarOpen, selected])
 
   useEffect(() => {
     if (view !== "week" && view !== "days" && view !== "day") return
@@ -1248,7 +1249,7 @@ export function CalendarPage() {
                   <button type="button" aria-label="Следующий месяц" onClick={() => shiftMiniCalendarMonth(1)}>
                     <ChevronRight size={15} />
                   </button>
-                  <button type="button" className="nexora-calendar-mini-today" onClick={goToday}>Сегодня</button>
+                  <button type="button" className="nexora-calendar-mini-today" onClick={() => setSelectedDate(today)}>Сегодня</button>
                 </div>
                 <div className="nexora-calendar-mini-weekdays" aria-hidden="true">
                   {HEADS[weekStartsOn].map((label) => <span key={label}>{label}</span>)}
