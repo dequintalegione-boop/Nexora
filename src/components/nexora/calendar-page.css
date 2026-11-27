@@ -546,3 +546,113 @@
     transition: none;
   }
 }
+
+
+.nexora-calendar-agenda {
+  background: #202020;
+}
+
+.nexora-calendar-agenda-day {
+  position: relative;
+  min-height: 4.75rem;
+  border-bottom: 1px solid var(--nexora-calendar-line);
+}
+
+.nexora-calendar-agenda-today {
+  background: linear-gradient(90deg, rgba(56, 168, 239, .075), transparent 70%);
+  box-shadow: inset 2px 0 var(--nexora-calendar-accent);
+}
+
+.nexora-calendar-agenda-row {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  gap: .45rem;
+}
+
+.nexora-calendar-agenda-task {
+  display: block;
+  min-width: 0;
+  border: 1px solid;
+  border-radius: 6px;
+  background: rgba(32, 34, 36, .86);
+  padding: .55rem .7rem;
+  text-align: left;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  transition: background 120ms ease, filter 120ms ease, border-color 120ms ease;
+}
+
+.nexora-calendar-agenda-task:hover {
+  background: rgba(255, 255, 255, .045);
+  filter: brightness(1.08);
+}
+
+.nexora-calendar-agenda-task:focus-visible,
+.nexora-calendar-agenda-actions button:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, .9);
+  outline-offset: 2px;
+}
+
+.nexora-calendar-agenda-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: .25rem;
+}
+
+.nexora-calendar-agenda-actions button {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--nexora-calendar-line);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, .025);
+  color: rgba(203, 213, 225, .65);
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.nexora-calendar-agenda-actions button:hover:not(:disabled) {
+  border-color: rgba(56, 168, 239, .32);
+  background: rgba(56, 168, 239, .1);
+  color: #a4d8ff;
+}
+
+.nexora-calendar-agenda-actions button:disabled {
+  cursor: not-allowed;
+  opacity: .3;
+}
+
+.nexora-calendar-agenda-session {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: .55rem;
+  border: 1px solid rgba(45, 212, 191, .18);
+  border-radius: 5px;
+  background: rgba(12, 72, 67, .2);
+  padding: .45rem .65rem;
+}
+
+@media (max-width: 640px) {
+  .nexora-calendar-agenda-row {
+    gap: .3rem;
+  }
+
+  .nexora-calendar-agenda-actions {
+    gap: .2rem;
+  }
+
+  .nexora-calendar-agenda-actions button {
+    width: 1.85rem;
+    height: 1.85rem;
+  }
+
+  .nexora-calendar-agenda-session {
+    gap: .35rem;
+    padding: .4rem .5rem;
+  }
+}
