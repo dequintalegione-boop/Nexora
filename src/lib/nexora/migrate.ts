@@ -2,7 +2,7 @@ import type { Persisted, Task } from "./types"
 import type { TaskAutomationRule, TaskAutomationRun } from "./automations"
 
 /** Current on-disk schema version for the Zustand persisted profile. */
-export const CURRENT_SCHEMA_VERSION = 1
+export const CURRENT_SCHEMA_VERSION = 2
 
 const SNAPSHOT_KEY = "nexora-migration-snapshot"
 
@@ -12,6 +12,29 @@ export interface MigrationResult {
   toVersion: number
   migrated: boolean
   snapshotTaken: boolean
+}
+
+function builtinStatusCatalog(labels?: Partial<Record<string, string>>) {
+  const base: Array<{ id: string; label: string; category: "open" | "done" | "cancelled"; order: number; builtin: true }> = [
+    { id: "inbox", label: "Входящие", category: "open", order: 0, builtin: true },
+    { id: "planned", label: "Запланирована", category: "open", order: 1, builtin: true },
+    { id: "in_progress", label: "В процессе", category: "open", order: 2, builtin: true },
+    { id: "waiting", label: "Ожидает", category: "open", order: 3, builtin: true },
+    { id: "done", label: "Готово", category: "done", order: 4, builtin: true },
+    { id: "cancelled", label: "Отменена", category: "cancelled", order: 5, builtin: true },
+  ]
+  return base.map((s) => ({ ...s, label: labels?.[s.id]?.trim() || s.label }))
+}
+
+function builtinPriorityCatalog(labels?: Partial<Record<string, string>>) {
+  const base: Array<{ id: string; label: string; order: number; builtin: true }> = [
+    { id: "none", label: "Без приоритета", order: 0, builtin: true },
+    { id: "low", label: "Низкий", order: 1, builtin: true },
+    { id: "medium", label: "Средний", order: 2, builtin: true },
+    { id: "high", label: "Высокий", order: 3, builtin: true },
+    { id: "critical", label: "Критический", order: 4, builtin: true },
+  ]
+  return base.map((p) => ({ ...p, label: labels?.[p.id]?.trim() || p.label }))
 }
 
 function asArray<T>(value: unknown): T[] {
@@ -44,10 +67,6 @@ function normalizeTask(task: Task): Task {
   }
 }
 
-/**
- * v0 → v1: ensure automation collections exist, normalize task array fields,
- * stamp schemaVersion.
- */
 function migrateV0ToV1(data: Persisted): Persisted {
   return {
     ...data,
@@ -67,12 +86,34 @@ function migrateV0ToV1(data: Persisted): Persisted {
   }
 }
 
+function migrateV1ToV2(data: Persisted): Persisted {
+  const settings = data.settings ?? ({} as Persisted["settings"])
+  const taskStatuses =
+    settings.taskStatuses && settings.taskStatuses.length > 0
+      ? settings.taskStatuses
+      : builtinStatusCatalog(settings.taskStatusLabels)
+  const taskPriorities =
+    settings.taskPriorities && settings.taskPriorities.length > 0
+      ? settings.taskPriorities
+      : builtinPriorityCatalog(settings.taskPriorityLabels)
+  return {
+    ...data,
+    schemaVersion: 2,
+    settings: {
+      ...settings,
+      taskStatuses,
+      taskPriorities,
+    },
+  }
+}
+
 const MIGRATIONS: Array<{
   from: number
   to: number
   run: (data: Persisted) => Persisted
 }> = [
   { from: 0, to: 1, run: migrateV0ToV1 },
+  { from: 1, to: 2, run: migrateV1ToV2 },
 ]
 
 function takeSnapshot(raw: unknown): boolean {
@@ -86,15 +127,10 @@ function takeSnapshot(raw: unknown): boolean {
     localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(payload))
     return true
   } catch {
-    // Quota or private mode — migration still proceeds; caller can rely on export backup.
     return false
   }
 }
 
-/**
- * Read the last pre-migration snapshot if present.
- * Useful for recovery UI or tests.
- */
 export function readMigrationSnapshot(): {
   savedAt: string
   fromVersion: number
@@ -121,11 +157,6 @@ export function clearMigrationSnapshot(): void {
   }
 }
 
-/**
- * Apply sequential schema migrations until CURRENT_SCHEMA_VERSION.
- * Idempotent: already-current data is returned unchanged with migrated=false.
- * Takes a localStorage snapshot before the first actual migration step.
- */
 export function migratePersistedData(
   raw: Partial<Persisted> | null | undefined,
 ): MigrationResult {
@@ -135,7 +166,6 @@ export function migratePersistedData(
   let snapshotTaken = false
 
   if (version >= CURRENT_SCHEMA_VERSION) {
-    // Still normalize optional arrays for safety without rewriting version.
     return {
       data: {
         ...data,
@@ -160,10 +190,16 @@ export function migratePersistedData(
     version = step.to
   }
 
-  // If somehow still behind, stamp current version after best-effort normalization.
   if (version < CURRENT_SCHEMA_VERSION) {
     if (!snapshotTaken) snapshotTaken = takeSnapshot(raw)
-    data = migrateV0ToV1(data)
+    if (version < 1) {
+      data = migrateV0ToV1(data)
+      version = 1
+    }
+    if (version < 2) {
+      data = migrateV1ToV2(data)
+      version = 2
+    }
     version = CURRENT_SCHEMA_VERSION
   }
 
