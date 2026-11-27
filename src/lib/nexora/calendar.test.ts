@@ -64,7 +64,7 @@ test("three events which overlap at the same time receive three columns", () => 
     { id: "c", start: 9 * 60 + 30, end: 10 * 60 + 30 },
   ])
   assert.deepEqual(layout.map((item) => item.columns), [3, 3, 3])
-  assert.deepEqual(layout.map((item) => item.leftPercent), [0, 100 / 3, 200 / 3])
+  layout.forEach((item, index) => assert.ok(Math.abs(item.leftPercent - [0, 100 / 3, 200 / 3][index]) < 1e-9))
 })
 
 test("adjacent calendar events can reuse the same full-width column", () => {
