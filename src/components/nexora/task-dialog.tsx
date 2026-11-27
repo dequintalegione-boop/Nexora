@@ -229,8 +229,43 @@ export function TaskDialog() {
               value={task.recurrenceRule?.frequency ?? task.repeat ?? ""}
               onChange={(e) => {
                 const frequency = e.target.value as RecurrenceFrequency | ""
+                const hadRule = Boolean(task.recurrenceRule || task.repeat)
+                const today = new Date()
+                const localToday = [
+                  today.getFullYear(),
+                  String(today.getMonth() + 1).padStart(2, "0"),
+                  String(today.getDate()).padStart(2, "0"),
+                ].join("-")
+                const recurrenceStartDate = hadRule
+                  ? task.recurrenceStartDate ?? task.occurrenceDate ?? task.scheduledDate ?? task.dueDate ?? localToday
+                  : task.occurrenceDate ?? task.scheduledDate ?? task.dueDate ?? localToday
                 updateTask(task.id, {
                   repeat: frequency === "daily" || frequency === "weekly" ? frequency : undefined,
+                  recurrenceParentId: frequency && !hadRule ? undefined : task.recurrenceParentId,
+                  occurrenceDate: frequency && !hadRule ? task.occurrenceDate ?? recurrenceStartDate : task.occurrenceDate,
+                  occurrenceNumber: frequency && !hadRule ? 1 : task.occurrenceNumber,
+                  skippedOccurrences: frequency && !hadRule ? [] : task.skippedOccurrences,
+                  recurrenceStartDate: frequency ? recurrenceStartDate : task.recurrenceStartDate,
+                  recurrenceStartScheduledDate: frequency
+                    ? hadRule
+                      ? task.recurrenceStartScheduledDate ?? task.scheduledDate
+                      : task.scheduledDate
+                    : task.recurrenceStartScheduledDate,
+                  recurrenceStartDueDate: frequency
+                    ? hadRule
+                      ? task.recurrenceStartDueDate ?? task.dueDate
+                      : task.dueDate
+                    : task.recurrenceStartDueDate,
+                  recurrenceStartStartAt: frequency
+                    ? hadRule
+                      ? task.recurrenceStartStartAt ?? task.startAt
+                      : task.startAt
+                    : task.recurrenceStartStartAt,
+                  recurrenceStartEndAt: frequency
+                    ? hadRule
+                      ? task.recurrenceStartEndAt ?? task.endAt
+                      : task.endAt
+                    : task.recurrenceStartEndAt,
                   recurrenceRule: frequency
                     ? {
                         ...task.recurrenceRule,
@@ -239,6 +274,9 @@ export function TaskDialog() {
                         until: task.recurrenceRule?.until,
                         count: task.recurrenceRule?.count,
                         weekdays: frequency === "weekly" ? task.recurrenceRule?.weekdays : undefined,
+                        byDay: frequency === "monthly" || frequency === "yearly" ? task.recurrenceRule?.byDay : undefined,
+                        byMonthDay: frequency === "monthly" || frequency === "yearly" ? task.recurrenceRule?.byMonthDay : undefined,
+                        byMonth: frequency === "yearly" ? task.recurrenceRule?.byMonth : undefined,
                       }
                     : undefined,
                 })
@@ -254,21 +292,22 @@ export function TaskDialog() {
               <Input
                 type="number"
                 min={1}
-                max={365}
+                max={10000}
                 aria-label="Интервал повторения"
                 value={task.recurrenceRule.interval}
                 onChange={(e) => updateTask(task.id, {
                   recurrenceRule: {
                     ...task.recurrenceRule!,
-                    interval: Math.max(1, Number(e.target.value) || 1),
+                    interval: Math.min(10000, Math.max(1, Number(e.target.value) || 1)),
                   },
                 })}
               />
             )}
           </div>
+
           {task.recurrenceRule?.frequency === "weekly" && (
             <div className="mt-2">
-              <label className="text-xs text-muted">Дни недели (если не выбраны — обычное повторение раз в N недель)</label>
+              <label className="text-xs text-muted">Дни недели (если не выбраны — день недели даты начала)</label>
               <div className="mt-2 flex flex-wrap gap-2">
                 {[
                   { value: 1, label: "Пн" },
@@ -305,6 +344,102 @@ export function TaskDialog() {
               </div>
             </div>
           )}
+
+          {(task.recurrenceRule?.frequency === "monthly" || task.recurrenceRule?.frequency === "yearly") && (
+            <div className="space-y-2 rounded-md border border-white/10 p-2">
+              <p className="text-xs font-medium text-muted">Правило по календарю</p>
+              <div>
+                <label className="text-xs text-muted">День месяца (BYMONTHDAY, можно несколько через запятую; −1 — последний)</label>
+                <Input
+                  className="w-full"
+                  value={(task.recurrenceRule.byMonthDay ?? []).join(", ")}
+                  placeholder="Например: 1, 15, -1"
+                  onChange={(e) => {
+                    const values = e.target.value
+                      .split(",")
+                      .map((value) => Number(value.trim()))
+                      .filter((value) => Number.isInteger(value) && value !== 0 && Math.abs(value) <= 31)
+                    updateTask(task.id, {
+                      recurrenceRule: {
+                        ...task.recurrenceRule!,
+                        byMonthDay: values.length ? [...new Set(values)] : undefined,
+                      },
+                    })
+                  }}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted">Порядковый день недели (BYDAY)</label>
+                <div className="mt-1 grid grid-cols-2 gap-2">
+                  <Select
+                    value={task.recurrenceRule.byDay?.[0] ? String(task.recurrenceRule.byDay[0].weekday) : ""}
+                    onChange={(e) => {
+                      const weekday = e.target.value === "" ? undefined : Number(e.target.value)
+                      updateTask(task.id, {
+                        recurrenceRule: {
+                          ...task.recurrenceRule!,
+                          byDay: weekday === undefined
+                            ? undefined
+                            : [{ weekday, ordinal: task.recurrenceRule?.byDay?.[0]?.ordinal ?? 1 }],
+                        },
+                      })
+                    }}
+                  >
+                    <option value="">Без дня недели</option>
+                    <option value="1">Понедельник</option>
+                    <option value="2">Вторник</option>
+                    <option value="3">Среда</option>
+                    <option value="4">Четверг</option>
+                    <option value="5">Пятница</option>
+                    <option value="6">Суббота</option>
+                    <option value="0">Воскресенье</option>
+                  </Select>
+                  <Select
+                    value={String(task.recurrenceRule.byDay?.[0]?.ordinal ?? 1)}
+                    disabled={!task.recurrenceRule.byDay?.[0]}
+                    onChange={(e) => updateTask(task.id, {
+                      recurrenceRule: {
+                        ...task.recurrenceRule!,
+                        byDay: task.recurrenceRule?.byDay?.[0]
+                          ? [{ ...task.recurrenceRule.byDay[0], ordinal: Number(e.target.value) }]
+                          : undefined,
+                      },
+                    })}
+                  >
+                    <option value="1">Первый</option>
+                    <option value="2">Второй</option>
+                    <option value="3">Третий</option>
+                    <option value="4">Четвёртый</option>
+                    <option value="-1">Последний</option>
+                  </Select>
+                </div>
+                <p className="mt-1 text-[11px] text-muted">Например: первый понедельник или последняя пятница месяца</p>
+              </div>
+              {task.recurrenceRule.frequency === "yearly" && (
+                <div>
+                  <label className="text-xs text-muted">Месяцы года (BYMONTH, 1–12; через запятую)</label>
+                  <Input
+                    className="w-full"
+                    value={(task.recurrenceRule.byMonth ?? []).join(", ")}
+                    placeholder="Пусто — любой месяц"
+                    onChange={(e) => {
+                      const values = e.target.value
+                        .split(",")
+                        .map((value) => Number(value.trim()))
+                        .filter((value) => Number.isInteger(value) && value >= 1 && value <= 12)
+                      updateTask(task.id, {
+                        recurrenceRule: {
+                          ...task.recurrenceRule!,
+                          byMonth: values.length ? [...new Set(values)] : undefined,
+                        },
+                      })
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           {(task.recurrenceRule || task.recurrenceParentId) && (
             <div className="mt-2">
               <Button
@@ -322,19 +457,26 @@ export function TaskDialog() {
               </p>
             </div>
           )}
+
           {task.recurrenceRule && (
-            <div>
-              <label className="text-xs text-muted">Повторять до (необязательно)</label>
-              <Input
-                className="w-full"
-                type="date"
-                value={task.recurrenceRule.until ?? ""}
-                onChange={(e) => updateTask(task.id, {
-                  recurrenceRule: { ...task.recurrenceRule!, until: e.target.value || undefined },
-                })}
-              />
-              <div className="mt-2">
-                <label className="text-xs text-muted">Количество повторений, включая текущее</label>
+            <div className="space-y-2">
+              <div>
+                <label className="text-xs text-muted">Повторять до (UNTIL; необязательно)</label>
+                <Input
+                  className="w-full"
+                  type="date"
+                  value={task.recurrenceRule.until ?? ""}
+                  onChange={(e) => updateTask(task.id, {
+                    recurrenceRule: {
+                      ...task.recurrenceRule!,
+                      until: e.target.value || undefined,
+                      count: e.target.value ? undefined : task.recurrenceRule?.count,
+                    },
+                  })}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted">Количество повторений, включая текущее (COUNT)</label>
                 <Input
                   className="w-full"
                   type="number"
@@ -345,11 +487,47 @@ export function TaskDialog() {
                     recurrenceRule: {
                       ...task.recurrenceRule!,
                       count: e.target.value ? Math.max(1, Number(e.target.value)) : undefined,
+                      until: e.target.value ? undefined : task.recurrenceRule?.until,
                     },
                   })}
                 />
               </div>
-              <p className="mt-1 text-xs text-muted">Следующая задача создаётся автоматически после завершения текущей.</p>
+              <div>
+                <label className="text-xs text-muted">Исключить даты (EXDATE)</label>
+                <Input
+                  className="w-full"
+                  type="date"
+                  value=""
+                  onChange={(e) => {
+                    const date = e.target.value
+                    if (!date) return
+                    const excludeDates = [...new Set([...(task.recurrenceRule?.excludeDates ?? []), date])].sort()
+                    updateTask(task.id, {
+                      recurrenceRule: { ...task.recurrenceRule!, excludeDates },
+                    })
+                  }}
+                />
+                {(task.recurrenceRule.excludeDates ?? []).length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {task.recurrenceRule.excludeDates!.map((date) => (
+                      <button
+                        key={date}
+                        type="button"
+                        className="rounded border border-white/10 px-2 py-1 text-xs text-muted hover:text-white"
+                        onClick={() => updateTask(task.id, {
+                          recurrenceRule: {
+                            ...task.recurrenceRule!,
+                            excludeDates: task.recurrenceRule?.excludeDates?.filter((item) => item !== date),
+                          },
+                        })}
+                      >
+                        {date} ×
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-muted">Следующая задача создаётся автоматически после завершения текущей. Исключения не удаляют уже созданные экземпляры.</p>
             </div>
           )}
         </div>

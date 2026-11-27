@@ -132,6 +132,9 @@ export interface Task {
   recurrenceStartDate?: string
   recurrenceStartScheduledDate?: string
   recurrenceStartDueDate?: string
+  /** Original time-block anchors for generated occurrences; keeps wall-clock time stable across a series. */
+  recurrenceStartStartAt?: string
+  recurrenceStartEndAt?: string
   skippedOccurrences?: string[]
   tags?: string[]
   contexts?: string[]

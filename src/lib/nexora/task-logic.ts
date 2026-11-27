@@ -1,4 +1,5 @@
 import type { RecurrenceRule, Task } from "./types"
+import { getNextRecurrenceOccurrence } from "./recurrence"
 
 export interface DependencyState {
   blockedBy: Task[]
@@ -58,60 +59,15 @@ export function canAddTaskDependency(tasks: Task[], taskId: string, dependencyId
   return true
 }
 
-function shiftOccurrenceDate(date: string, frequency: "daily" | "weekly" | "monthly" | "yearly", interval: number): string {
-  const [year, month, day] = date.split("-").map(Number)
-  const value = new Date(Date.UTC(year, month - 1, day, 12))
-  const safeInterval = Math.max(1, Math.floor(interval) || 1)
-
-  if (frequency === "daily") value.setUTCDate(value.getUTCDate() + safeInterval)
-  if (frequency === "weekly") value.setUTCDate(value.getUTCDate() + safeInterval * 7)
-  if (frequency === "monthly") {
-    const originalDay = value.getUTCDate()
-    value.setUTCDate(1)
-    value.setUTCMonth(value.getUTCMonth() + safeInterval)
-    const lastDay = new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 0)).getUTCDate()
-    value.setUTCDate(Math.min(originalDay, lastDay))
-  }
-  if (frequency === "yearly") {
-    const originalMonth = value.getUTCMonth()
-    const originalDay = value.getUTCDate()
-    value.setUTCDate(1)
-    value.setUTCFullYear(value.getUTCFullYear() + safeInterval)
-    value.setUTCMonth(originalMonth)
-    const lastDay = new Date(Date.UTC(value.getUTCFullYear(), originalMonth + 1, 0)).getUTCDate()
-    value.setUTCDate(Math.min(originalDay, lastDay))
-  }
-
-  return value.toISOString().slice(0, 10)
-}
-
 function shiftCalendarDays(date: string, days: number): string {
   const [year, month, day] = date.split("-").map(Number)
   const value = new Date(Date.UTC(year, month - 1, day + days, 12))
   return value.toISOString().slice(0, 10)
 }
 
-function getWeeklyOccurrenceDate(date: string, interval: number, weekdays: number[], occurrenceOffset: number): string {
-  const [year, month, day] = date.split("-").map(Number)
-  const base = new Date(Date.UTC(year, month - 1, day, 12))
-  const baseWeekStart = new Date(base)
-  baseWeekStart.setUTCDate(baseWeekStart.getUTCDate() - ((baseWeekStart.getUTCDay() + 6) % 7))
-  const selectedDays = new Set(weekdays.filter((weekday) => Number.isInteger(weekday) && weekday >= 0 && weekday <= 6))
-  if (selectedDays.size === 0 || occurrenceOffset <= 0) return date
-
-  const safeInterval = Math.max(1, Math.floor(interval) || 1)
-  const cursor = new Date(base)
-  let found = 0
-  // Bound the search to avoid an invalid rule creating an endless loop.
-  for (let scanned = 0; scanned < 36600; scanned += 1) {
-    cursor.setUTCDate(cursor.getUTCDate() + 1)
-    const daysFromWeekStart = Math.floor((cursor.getTime() - baseWeekStart.getTime()) / 86400000)
-    const weekIndex = Math.floor(daysFromWeekStart / 7)
-    if (weekIndex % safeInterval !== 0 || !selectedDays.has(cursor.getUTCDay())) continue
-    found += 1
-    if (found === occurrenceOffset) return cursor.toISOString().slice(0, 10)
-  }
-  return date
+function shiftCalendarDateTime(value: string | undefined, days: number): string | undefined {
+  if (!value || !/^\d{4}-\d{2}-\d{2}/.test(value)) return value
+  return shiftCalendarDays(value.slice(0, 10), days) + value.slice(10)
 }
 
 export function buildNextTaskOccurrence(task: Task, now: string): Omit<Task, "id"> | null {
@@ -119,35 +75,26 @@ export function buildNextTaskOccurrence(task: Task, now: string): Omit<Task, "id
     task.repeat ? { frequency: task.repeat, interval: 1 } : undefined
   )
   if (!rule) return null
-
-  const occurrenceNumber = (task.occurrenceNumber ?? 1) + 1
-  if (rule.count != null && occurrenceNumber > rule.count) return null
+  if (rule.count != null && (task.occurrenceNumber ?? 1) >= rule.count) return null
 
   const baseDate = task.recurrenceStartDate ?? task.occurrenceDate ?? task.scheduledDate ?? task.dueDate ?? now.slice(0, 10)
-  const validWeeklyDays = rule.frequency === "weekly"
-    ? (rule.weekdays ?? []).filter(
-        (weekday) => Number.isInteger(weekday) && weekday >= 0 && weekday <= 6
-      )
-    : []
-  // Invalid or empty weekday selections fall back to the ordinary weekly interval.
-  const weeklyDays = validWeeklyDays.length > 0 ? validWeeklyDays : undefined
-  const nextDate = weeklyDays
-    ? getWeeklyOccurrenceDate(baseDate, rule.interval, weeklyDays, occurrenceNumber - 1)
-    : shiftOccurrenceDate(baseDate, rule.frequency, rule.interval * (occurrenceNumber - 1))
-  if (rule.until && nextDate > rule.until) return null
+  const currentOccurrenceDate = task.occurrenceDate ?? baseDate
+  const nextOccurrence = getNextRecurrenceOccurrence(
+    rule,
+    baseDate,
+    currentOccurrenceDate,
+    task.skippedOccurrences ?? [],
+  )
+  if (!nextOccurrence) return null
 
-  const scheduledAnchor = task.recurrenceStartScheduledDate ?? task.scheduledDate
-  const dueAnchor = task.recurrenceStartDueDate ?? task.dueDate
   const dayOffset = Math.round(
-    (new Date(nextDate + "T12:00:00.000Z").getTime() -
+    (new Date(nextOccurrence.date + "T12:00:00.000Z").getTime() -
       new Date(baseDate + "T12:00:00.000Z").getTime()) / 86400000
   )
-  const shiftField = (date?: string) =>
-    date
-      ? weeklyDays
-        ? shiftCalendarDays(date, dayOffset)
-        : shiftOccurrenceDate(date, rule.frequency, rule.interval * (occurrenceNumber - 1))
-      : undefined
+  const scheduledAnchor = task.recurrenceStartScheduledDate ?? task.scheduledDate
+  const dueAnchor = task.recurrenceStartDueDate ?? task.dueDate
+  const startAtAnchor = task.recurrenceStartStartAt ?? task.startAt
+  const endAtAnchor = task.recurrenceStartEndAt ?? task.endAt
 
   return {
     ...task,
@@ -158,16 +105,21 @@ export function buildNextTaskOccurrence(task: Task, now: string): Omit<Task, "id
     deletedAt: undefined,
     completedAt: undefined,
     status: "planned",
-    scheduledDate: shiftField(scheduledAnchor),
-    dueDate: shiftField(dueAnchor),
-    occurrenceDate: nextDate,
-    occurrenceNumber,
+    scheduledDate: scheduledAnchor ? shiftCalendarDays(scheduledAnchor, dayOffset) : undefined,
+    dueDate: dueAnchor ? shiftCalendarDays(dueAnchor, dayOffset) : undefined,
+    startAt: shiftCalendarDateTime(startAtAnchor, dayOffset),
+    endAt: shiftCalendarDateTime(endAtAnchor, dayOffset),
+    recurrenceStartStartAt: startAtAnchor,
+    recurrenceStartEndAt: endAtAnchor,
+    occurrenceDate: nextOccurrence.date,
+    occurrenceNumber: nextOccurrence.number,
     recurrenceStartDate: baseDate,
     recurrenceStartScheduledDate: scheduledAnchor,
     recurrenceStartDueDate: dueAnchor,
     recurrenceParentId: task.recurrenceParentId ?? task.id,
     parentId: task.parentId,
     dependsOn: [...(task.dependsOn ?? [])],
+    skippedOccurrences: [...(task.skippedOccurrences ?? [])],
     history: [{ at: now, change: "Создано следующее повторение" }],
   }
 }
@@ -197,7 +149,14 @@ export function updateRecurrenceSeriesTasks(
     return {
       ...task,
       recurrenceRule: rule
-        ? { ...rule, weekdays: rule.weekdays ? [...rule.weekdays] : undefined }
+        ? {
+            ...rule,
+            weekdays: rule.weekdays ? [...rule.weekdays] : undefined,
+            byDay: rule.byDay?.map((item) => ({ ...item })),
+            byMonthDay: rule.byMonthDay ? [...rule.byMonthDay] : undefined,
+            byMonth: rule.byMonth ? [...rule.byMonth] : undefined,
+            excludeDates: rule.excludeDates ? [...rule.excludeDates] : undefined,
+          }
         : undefined,
       repeat: rule?.frequency === "daily" || rule?.frequency === "weekly" ? rule.frequency : undefined,
       updatedAt: now,

@@ -4,6 +4,7 @@ import { ru } from "date-fns/locale"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { addDays, isoDate, monthGrid, parseISODate, startOfWeek } from "@/lib/nexora/dates"
 import { getCalendarDayDropPatch, getCalendarDropPatch, getCalendarTaskTime } from "@/lib/nexora/calendar"
+import { expandTaskOccurrences } from "@/lib/nexora/recurrence"
 import { isDoneStatus, getTaskPriorityLabels } from "@/lib/nexora/copy"
 import { useNexora } from "@/lib/nexora/store"
 import { useUI } from "@/lib/nexora/ui-store"
@@ -28,6 +29,8 @@ const TIME_SLOTS = Array.from(
   (_, i) => SLOT_START + i * SLOT_STEP,
 )
 const LIST_DAYS = 14
+
+type CalendarTask = Task & { virtualOccurrence?: boolean; recurrenceSeriesId?: string }
 
 const PRIORITY_COLOR: Record<string, string> = {
   none: "bg-white/15 border-white/20 text-white/90",
@@ -94,10 +97,42 @@ export function CalendarPage() {
     [cursor, weekStartsOn],
   )
 
-  const visibleTasks = useMemo(
-    () => tasks.filter((t) => !t.deletedAt && !t.archived),
-    [tasks],
-  )
+  const recurrenceRange = view === "month"
+    ? cells.filter((day): day is string => Boolean(day))
+    : view === "week"
+      ? weekDays
+      : view === "day"
+        ? [selected]
+        : listDays
+  const recurrenceRangeStart = recurrenceRange[0] ?? selected
+  const recurrenceRangeEnd = recurrenceRange[recurrenceRange.length - 1] ?? selected
+
+  const visibleTasks = useMemo<CalendarTask[]>(() => {
+    const activeSeriesIds = new Set(
+      tasks
+        .filter((task) =>
+          (task.recurrenceParentId ?? task.id) === task.id &&
+          Boolean(task.recurrenceRule || task.repeat) &&
+          !task.deletedAt &&
+          !task.archived
+        )
+        .map((task) => task.id),
+    )
+    const ordinaryTasks = tasks.filter((task) =>
+      !task.deletedAt &&
+      !task.archived &&
+      !task.recurrenceRule &&
+      !task.repeat &&
+      (!task.recurrenceParentId || !activeSeriesIds.has(task.recurrenceParentId))
+    )
+    const occurrences = expandTaskOccurrences(tasks, recurrenceRangeStart, recurrenceRangeEnd)
+      .map((occurrence) => ({
+        ...occurrence.task,
+        virtualOccurrence: occurrence.isVirtual,
+        recurrenceSeriesId: occurrence.seriesId,
+      }))
+    return [...ordinaryTasks, ...occurrences]
+  }, [tasks, recurrenceRangeStart, recurrenceRangeEnd])
 
   const tasksForDay = (day: string) =>
     visibleTasks.filter((task) => {
@@ -144,25 +179,25 @@ export function CalendarPage() {
     setCursor({ year: d.getFullYear(), month: d.getMonth() })
   }
 
-  const onEventClick = (task: Task) => setTaskId(task.id)
+  const onEventClick = (task: CalendarTask) => setTaskId(task.virtualOccurrence ? task.recurrenceSeriesId ?? task.id : task.id)
 
-  const eventChipClass = (task: Task, kind: "scheduled" | "due") =>
+  const eventChipClass = (task: CalendarTask, kind: "scheduled" | "due") =>
     cn(
       "block w-full truncate rounded border px-1.5 py-0.5 text-left text-[11px] leading-tight transition hover:brightness-110",
       PRIORITY_COLOR[task.priority] ?? PRIORITY_COLOR.none,
       isDoneStatus(task.status, settings) && "opacity-50 line-through",
-      kind === "due" && "border-dashed",
+      (kind === "due" || task.virtualOccurrence) && "border-dashed",
     )
 
-  const renderEventChip = (task: Task, day: string) => {
+  const renderEventChip = (task: CalendarTask, day: string) => {
     const isDue = task.dueDate === day && task.scheduledDate !== day
     const time = getCalendarTaskTime(task)
     return (
       <button
         key={task.id}
         type="button"
-        draggable
-        onDragStart={(e) => {
+        draggable={!task.virtualOccurrence}
+        onDragStart={task.virtualOccurrence ? undefined : (e) => {
           e.dataTransfer.setData("text/task-id", task.id)
           e.dataTransfer.effectAllowed = "move"
         }}
@@ -171,7 +206,7 @@ export function CalendarPage() {
           onEventClick(task)
         }}
         className={eventChipClass(task, isDue ? "due" : "scheduled")}
-        title={`${task.title}${time ? ` · ${time}` : ""}${isDue ? " (срок)" : ""}`}
+        title={`${task.title}${time ? ` · ${time}` : ""}${isDue ? " (срок)" : ""}${task.virtualOccurrence ? " · повторение" : ""}`}
       >
         {time ? <span className="mr-1 opacity-80">{time}</span> : null}
         {task.title}
@@ -274,8 +309,8 @@ export function CalendarPage() {
                     <button
                       key={task.id}
                       type="button"
-                      draggable
-                      onDragStart={(e) => {
+                      draggable={!task.virtualOccurrence}
+                      onDragStart={task.virtualOccurrence ? undefined : (e) => {
                         e.dataTransfer.setData("text/task-id", task.id)
                         e.dataTransfer.effectAllowed = "move"
                       }}
@@ -512,8 +547,8 @@ export function CalendarPage() {
                               isDoneStatus(task.status, settings) && "opacity-50 line-through",
                             )}
                             onClick={() => onEventClick(task)}
-                            draggable
-                            onDragStart={(e) => {
+                            draggable={!task.virtualOccurrence}
+                            onDragStart={task.virtualOccurrence ? undefined : (e) => {
                               e.dataTransfer.setData("text/task-id", task.id)
                             }}
                           >
