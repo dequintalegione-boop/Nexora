@@ -227,10 +227,33 @@
 }
 
 .nexora-calendar-scroll {
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
+  max-height: min(72vh, 54rem);
+  overflow: auto;
+  overscroll-behavior: contain;
   scrollbar-color: rgba(255, 255, 255, .17) transparent;
   scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.nexora-calendar-header-corner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 12;
+  background: #202020;
+  box-shadow: 1px 0 var(--nexora-calendar-line-strong);
+}
+
+.nexora-calendar-time-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 9;
+  background: #202020;
+  box-shadow: 1px 0 var(--nexora-calendar-line-strong);
+}
+
+.nexora-calendar-time-grid .nexora-calendar-time-gutter {
+  z-index: 6;
 }
 
 .nexora-calendar-day-header {
@@ -500,6 +523,7 @@
   }
 
   .nexora-calendar-card .nexora-calendar-scroll {
+    max-height: 68vh;
     -webkit-overflow-scrolling: touch;
   }
 
