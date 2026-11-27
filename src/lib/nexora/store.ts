@@ -11,6 +11,7 @@ import { createTaskService } from "./task-service"
 import { getTasksDueForAutomation, getTasksDueSoonForAutomation } from "./automations"
 import { TaskAutomationEventAdapter } from "./automation-event-adapter"
 import { createReminderTriggeredEventInput, type ReminderTriggeredInput } from "./reminder-events"
+import { getTaskReminderTimestamp } from "./reminders"
 import { CURRENT_SCHEMA_VERSION, migratePersistedData } from "./migrate"
 import type { TaskAutomationRule } from "./automations"
 import { buildNextTaskOccurrence, updateRecurrenceSeriesTasks } from "./task-logic"
@@ -1155,9 +1156,21 @@ export const useNexora = create<Store>()(
       },
 
       markReminderTriggered: (input) => {
-        const task = get().tasks.find((item) => item.id === input.taskId)
+        const state = get()
+        const task = state.tasks.find((item) => item.id === input.taskId)
         const reminder = task?.reminders?.find((item) => item.id === input.reminderId)
-        if (!task || !reminder || !reminder.enabled || reminder.lastTriggeredAt) return false
+        if (
+          !task ||
+          task.archived ||
+          task.deletedAt ||
+          isDoneStatus(task.status, state.settings) ||
+          task.status === "cancelled" ||
+          !reminder ||
+          reminder.lastTriggeredAt
+        ) return false
+
+        const scheduledAt = getTaskReminderTimestamp(task, reminder)
+        if (scheduledAt == null || scheduledAt !== input.scheduledAt) return false
 
         const service = createStoreTaskService(
           () => get().tasks,
