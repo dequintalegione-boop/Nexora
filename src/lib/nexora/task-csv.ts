@@ -501,7 +501,7 @@ function buildTask(
   }
 
   validateImportedTask(task)
-  return task as Task
+  return task as unknown as Task
 }
 
 /**
