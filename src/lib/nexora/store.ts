@@ -3,6 +3,8 @@ import { persist } from "zustand/middleware"
 import { STATUS_LABEL, WIDGETS } from "./copy"
 import { addDays, isoDate } from "./dates"
 import { buildSeed } from "./seed"
+import { runTaskAutomations } from "./automations"
+import type { TaskAutomationRule } from "./automations"
 import { buildNextTaskOccurrence, canAddTaskDependency, canSetTaskParent, updateRecurrenceSeriesTasks } from "./task-logic"
 import type {
   ActiveTimer,
@@ -54,6 +56,8 @@ function emptyData(): Persisted {
     sessions: [],
     activeTimer: null,
     settings: defaultSettings(),
+    automationRules: [],
+    automationRuns: [],
   }
 }
 
@@ -95,6 +99,9 @@ type Store = Persisted & {
   resumeTimer: () => void
   stopTimer: () => string | null
   setTimerIntent: (taskId: string | null) => void
+  addAutomationRule: (rule: Omit<TaskAutomationRule, "id" | "createdAt" | "updatedAt">) => string
+  updateAutomationRule: (id: string, patch: Partial<TaskAutomationRule>) => void
+  removeAutomationRule: (id: string) => void
 }
 
 export const useNexora = create<Store>()(
@@ -131,7 +138,7 @@ export const useNexora = create<Store>()(
         }))
       },
 
-      replaceAll: (data) => set({ ...data, hydrated: true }),
+      replaceAll: (data) => set({ ...data, automationRules: data.automationRules ?? [], automationRuns: data.automationRuns ?? [], hydrated: true }),
 
       updateSettings: (patch) =>
         set((s) => ({ settings: { ...s.settings, ...patch } })),
@@ -183,7 +190,11 @@ export const useNexora = create<Store>()(
           contexts: input.contexts ?? [],
           history: [{ at: now, change: "Задача создана" }],
         }
-        set((s) => ({ tasks: [task, ...s.tasks] }))
+        set((s) => {
+          const event = { type: "task.created" as const, taskId: id, eventId: nid("event"), occurredAt: now }
+          const result = runTaskAutomations([task, ...s.tasks], s.automationRules ?? [], event)
+          return { tasks: result.tasks, automationRuns: [...result.runs, ...(s.automationRuns ?? [])].slice(0, 200) }
+        })
         return id
       },
 
@@ -228,7 +239,12 @@ export const useNexora = create<Store>()(
             }
           }
 
-          return { tasks: nextTasks }
+          const statusEvent = { type: "task.status_changed" as const, taskId: id, eventId: nid("event"), occurredAt: now }
+          const statusResult = runTaskAutomations(nextTasks, s.automationRules ?? [], statusEvent)
+          const completionResult = status === "done" && current.status !== "done"
+            ? runTaskAutomations(statusResult.tasks, s.automationRules ?? [], { type: "task.completed", taskId: id, eventId: nid("event"), occurredAt: now })
+            : { tasks: statusResult.tasks, runs: [] }
+          return { tasks: completionResult.tasks, automationRuns: [...completionResult.runs, ...statusResult.runs, ...(s.automationRuns ?? [])].slice(0, 200) }
         }),
 
       updateRecurrenceSeries: (id, rule) => {
@@ -657,9 +673,21 @@ export const useNexora = create<Store>()(
       },
 
       setTimerIntent: (taskId) => set({ timerIntent: taskId }),
+
+      addAutomationRule: (input) => {
+        const now = nowISO()
+        const id = nid("automation")
+        set((state) => ({ automationRules: [...(state.automationRules ?? []), { ...input, id, createdAt: now, updatedAt: now }] }))
+        return id
+      },
+      updateAutomationRule: (id, patch) => set((state) => ({
+        automationRules: (state.automationRules ?? []).map((rule) => rule.id === id ? { ...rule, ...patch, id, updatedAt: nowISO() } : rule),
+      })),
+      removeAutomationRule: (id) => set((state) => ({ automationRules: (state.automationRules ?? []).filter((rule) => rule.id !== id) })),
     }),
     {
       name: "nexora-v1",
+      merge: (persisted, current) => ({ ...current, ...(persisted as Partial<Store>), automationRules: (persisted as Partial<Store>).automationRules ?? [], automationRuns: (persisted as Partial<Store>).automationRuns ?? [] }),
       onRehydrateStorage: () => (state) => {
         state?.markHydrated()
       },
