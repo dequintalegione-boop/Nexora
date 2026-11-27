@@ -77,6 +77,33 @@ test("task views combine ordinary tasks with unique virtual and persisted recurr
   assert.equal(items.filter((item) => item.id === "series").length, 1)
 })
 
+test("duplicate saved instances for the same series date render only the last stored instance", () => {
+  const root = task("series", {
+    scheduledDate: "2026-01-05",
+    recurrenceStartDate: "2026-01-05",
+    recurrenceStartScheduledDate: "2026-01-05",
+    recurrenceRule: { frequency: "daily", interval: 1, count: 4 },
+  })
+  const first = task("saved-first", {
+    recurrenceParentId: "series",
+    occurrenceDate: "2026-01-07",
+    scheduledDate: "2026-01-10",
+  })
+  const last = task("saved-last", {
+    recurrenceParentId: "series",
+    occurrenceDate: "2026-01-07",
+    scheduledDate: "2026-02-20",
+  })
+  const items = expandTasksForView(
+    [root, first, last],
+    { start: "2026-01-05", end: "2026-01-10" },
+  )
+  const matching = items.filter((item) => item.recurrenceSeriesId === "series" && item.occurrenceDate === "2026-01-07")
+  assert.equal(matching.length, 1)
+  assert.equal(matching[0]?.id, "saved-last")
+  assert.equal(matching[0]?.virtualOccurrence, false)
+})
+
 test("task views keep the series master available when its first occurrence is outside the window", () => {
   const root = task("series", {
     scheduledDate: "2026-01-01",
