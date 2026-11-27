@@ -123,6 +123,8 @@ export const useNexora = create<Store>()(
           current.entries,
           current.goals,
           current.sessions,
+          current.automationRules ?? [],
+          current.automationRuns ?? [],
         ].some((items) => items.length > 0)
 
         // Demo data must never overwrite real user content.
