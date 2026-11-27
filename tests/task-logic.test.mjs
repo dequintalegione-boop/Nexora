@@ -451,6 +451,28 @@ test("virtual occurrence materialization keeps its date identity but removes ser
   assert.equal(buildMaterializedTaskOccurrence(task("ordinary"), "new-id", "2026-01-07T10:00:00.000Z"), null)
 })
 
+test("materialized moved occurrence remains a single persisted item in calendar expansion", () => {
+  const root = task("series", {
+    scheduledDate: "2026-01-05",
+    recurrenceStartDate: "2026-01-05",
+    recurrenceStartScheduledDate: "2026-01-05",
+    recurrenceRule: { frequency: "daily", interval: 1, count: 5 },
+  })
+  const virtual = expandTaskOccurrences([root], "2026-01-05", "2026-01-09")
+    .find((item) => item.occurrenceDate === "2026-01-07")?.task
+  assert.ok(virtual)
+  const materialized = buildMaterializedTaskOccurrence(virtual, "instance-3", "2026-01-06T12:00:00.000Z")
+  assert.ok(materialized)
+  const moved = { ...materialized, scheduledDate: "2026-01-12", startAt: "2026-01-12T09:00:00.000Z" }
+  const expanded = expandTaskOccurrences([root, moved], "2026-01-05", "2026-01-12")
+  const saved = expanded.filter((item) => item.occurrenceDate === "2026-01-07")
+  assert.equal(saved.length, 1)
+  assert.equal(saved[0]?.task.id, "instance-3")
+  assert.equal(saved[0]?.isVirtual, false)
+  assert.equal(saved[0]?.task.scheduledDate, "2026-01-12")
+  assert.equal(expanded.filter((item) => item.task.id === "series::2026-01-07").length, 0)
+})
+
 test("skipping a virtual occurrence excludes only that date and leaves the series active", () => {
   const root = task("series", {
     status: "in_progress",
