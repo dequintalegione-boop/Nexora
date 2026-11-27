@@ -146,11 +146,13 @@ export function CalendarPage() {
   const [agendaDayCount, setAgendaDayCount] = useState(7)
   const [agendaStartDate, setAgendaStartDate] = useState(today)
   const [agendaHasScrolled, setAgendaHasScrolled] = useState(false)
+  const [agendaScrollDirection, setAgendaScrollDirection] = useState<"up" | "down">("down")
   const agendaScrollRef = useRef<HTMLDivElement | null>(null)
   const agendaTopSentinelRef = useRef<HTMLDivElement | null>(null)
   const agendaBottomSentinelRef = useRef<HTMLDivElement | null>(null)
   const agendaPrependHeightRef = useRef<number | null>(null)
   const agendaProgrammaticScrollRef = useRef(false)
+  const agendaLastScrollTopRef = useRef(0)
   const [miniCalendarOpen, setMiniCalendarOpen] = useState(false)
   const [slotStartHour, setSlotStartHour] = useState(6)
   const [slotEndHour, setSlotEndHour] = useState(22)
@@ -210,7 +212,7 @@ export function CalendarPage() {
 
     let previousObserver: IntersectionObserver | null = null
     const topSentinel = agendaTopSentinelRef.current
-    if (agendaHasScrolled && root.scrollHeight > root.clientHeight + 2 && topSentinel) {
+    if (agendaHasScrolled && agendaScrollDirection === "up" && root.scrollHeight > root.clientHeight + 2 && topSentinel) {
       previousObserver = new IntersectionObserver((entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return
         if (agendaPrependHeightRef.current !== null) return
@@ -227,7 +229,7 @@ export function CalendarPage() {
       nextObserver.disconnect()
       previousObserver?.disconnect()
     }
-  }, [view, agendaHasScrolled, agendaDayCount, agendaStartDate])
+  }, [view, agendaHasScrolled, agendaScrollDirection, agendaDayCount, agendaStartDate])
 
   useEffect(() => {
     const previousHeight = agendaPrependHeightRef.current
@@ -235,7 +237,10 @@ export function CalendarPage() {
     agendaProgrammaticScrollRef.current = true
     const frame = window.requestAnimationFrame(() => {
       const container = agendaScrollRef.current
-      if (container) container.scrollTop += container.scrollHeight - previousHeight
+      if (container) {
+        container.scrollTop += container.scrollHeight - previousHeight
+        agendaLastScrollTopRef.current = container.scrollTop
+      }
       agendaPrependHeightRef.current = null
       window.requestAnimationFrame(() => { agendaProgrammaticScrollRef.current = false })
     })
@@ -485,6 +490,9 @@ export function CalendarPage() {
     agendaProgrammaticScrollRef.current = true
     window.requestAnimationFrame(() => {
       if (agendaScrollRef.current) agendaScrollRef.current.scrollTop = 0
+      agendaLastScrollTopRef.current = 0
+      setAgendaScrollDirection("down")
+      setAgendaHasScrolled(false)
       window.requestAnimationFrame(() => { agendaProgrammaticScrollRef.current = false })
     })
   }
@@ -1690,7 +1698,14 @@ export function CalendarPage() {
             ref={agendaScrollRef}
             className="nexora-calendar-agenda-scroll"
             onScroll={() => {
-              if (!agendaProgrammaticScrollRef.current) setAgendaHasScrolled(true)
+              const container = agendaScrollRef.current
+              if (!container) return
+              const nextTop = container.scrollTop
+              if (!agendaProgrammaticScrollRef.current && nextTop !== agendaLastScrollTopRef.current) {
+                setAgendaHasScrolled(true)
+                setAgendaScrollDirection(nextTop < agendaLastScrollTopRef.current ? "up" : "down")
+              }
+              agendaLastScrollTopRef.current = nextTop
             }}
           >
             <div ref={agendaTopSentinelRef} className="nexora-calendar-agenda-sentinel" aria-hidden="true" />
