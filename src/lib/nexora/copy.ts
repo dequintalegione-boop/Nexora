@@ -10,13 +10,13 @@ import type {
 } from "./types"
 
 export const WIDGETS = [
+  { id: "week", label: "Активность" },
   { id: "progress", label: "Прогресс дня" },
   { id: "next", label: "Чем заняться?" },
   { id: "tasks", label: "Задачи на сегодня" },
   { id: "habits", label: "Привычки" },
   { id: "projects", label: "Проекты" },
   { id: "capture", label: "Быстрая запись" },
-  { id: "week", label: "Неделя" },
 ] as const
 
 export const STATUS_LABEL: Record<string, string> = {
