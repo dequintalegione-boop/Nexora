@@ -12,6 +12,7 @@ import {
 import {
   getCalendarCreatePatch,
   getCalendarDayDropPatch,
+  getCalendarDropMinutes,
   getCalendarDropPatch,
   getCalendarResizePatch,
   getCalendarTaskTime,
@@ -425,8 +426,21 @@ export function CalendarPage() {
     const day = zone?.dataset.calendarDropDay
     if (!day) return null
     if (zone?.dataset.calendarDropAllDay === "true") return { day, minutes: null, allDay: true }
-    const minutes = zone?.dataset.calendarDropMinutes
-    return { day, minutes: minutes === undefined ? null : Number(minutes), allDay: false }
+    const explicitMinutes = zone?.dataset.calendarDropMinutes
+    if (explicitMinutes !== undefined) return { day, minutes: Number(explicitMinutes), allDay: false }
+    if (zone?.dataset.calendarDropGrid === "true") {
+      const rect = zone.getBoundingClientRect()
+      const minutes = getCalendarDropMinutes(
+        clientY,
+        rect.top,
+        rect.height,
+        Number(zone.dataset.calendarDropStart),
+        Number(zone.dataset.calendarDropEnd),
+        SLOT_STEP,
+      )
+      return { day, minutes, allDay: false }
+    }
+    return { day, minutes: null, allDay: false }
   }
 
   const applyCalendarTouchDrop = (taskId: string, target: CalendarDropTarget) => {
@@ -703,6 +717,10 @@ export function CalendarPage() {
             return (
               <div
                 key={`grid-${day}`}
+                data-calendar-drop-day={day}
+                data-calendar-drop-grid="true"
+                data-calendar-drop-start={slotStart}
+                data-calendar-drop-end={slotEnd}
                 className={cn(
                   "nexora-calendar-grid-column relative border-r border-white/10",
                   day === today && "nexora-calendar-today-column",
