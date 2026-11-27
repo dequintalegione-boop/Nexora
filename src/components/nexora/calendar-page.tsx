@@ -176,7 +176,10 @@ export function CalendarPage() {
                   onDrop={(event) => {
                     event.preventDefault()
                     const id = event.dataTransfer.getData("text/task-id")
-                    if (id) {\n                      const task = tasks.find((item) => item.id === id)\n                      if (task) updateTask(id, getCalendarDayDropPatch(task, day))\n                    }
+                    if (id) {
+                      const task = tasks.find((item) => item.id === id)
+                      if (task) updateTask(id, getCalendarDayDropPatch(task, day))
+                    }
                   }}
                   className={cn(
                     "min-h-16 rounded-xl border px-1.5 py-1.5 text-left transition",
@@ -228,7 +231,9 @@ export function CalendarPage() {
                     </div>
                   )
                 })}
-                {TIME_SLOTS.map((minutes) => (\n                  <Fragment key={minutes}>\n<div key={`label-${minutes}`} className="border-t border-line/60 pt-1 text-[10px] text-muted">{minutes % 60 === 0 ? localTimeLabel(minutes) : ""}</div>
+                {TIME_SLOTS.map((minutes) => (
+                  <Fragment key={minutes}>
+<div key={`label-${minutes}`} className="border-t border-line/60 pt-1 text-[10px] text-muted">{minutes % 60 === 0 ? localTimeLabel(minutes) : ""}</div>
                     {weekDays.map((day) => {
                       const slotTasks = tasks.filter((task) => {
                         if (!isTaskOnDay(task, day) || task.allDay || task.startAt?.slice(0, 10) !== day) return false
@@ -251,7 +256,9 @@ export function CalendarPage() {
                           {slotTasks.map((task) => renderTask(task, true))}
                         </div>
                       )
-                    })}\n                  </Fragment>\n                ))}
+                    })}
+                  </Fragment>
+                ))}
               </div>
             </div>
           </div>
