@@ -70,7 +70,9 @@ test("task views combine ordinary tasks with unique virtual and persisted recurr
   assert.equal(seriesItems.filter((item) => item.occurrenceDate === "2026-01-06")[0]?.virtualOccurrence, false)
   assert.equal(seriesItems.filter((item) => item.occurrenceDate === "2026-01-07")[0]?.virtualOccurrence, true)
   assert.equal(seriesItems.filter((item) => item.occurrenceDate === "2026-01-08")[0]?.virtualOccurrence, true)
-  assert.equal(items.some((item) => item.id === "saved-outside"), false)
+  const savedOutside = items.find((item) => item.id === "saved-outside")
+  assert.equal(savedOutside?.virtualOccurrence, false)
+  assert.equal(savedOutside?.recurrenceSeriesId, "series")
   assert.equal(items.filter((item) => item.id === "series").length, 1)
 })
 
@@ -84,9 +86,9 @@ test("task views keep the series master available when its first occurrence is o
   const items = expandTasksForView([root], { start: "2026-01-03", end: "2026-01-05" })
 
   assert.equal(items.filter((item) => item.id === "series").length, 1)
-  assert.equal(items.filter((item) => item.virtualOccurrence).length, 2)
+  assert.equal(items.filter((item) => item.virtualOccurrence).length, 3)
   assert.deepEqual(
     items.filter((item) => item.virtualOccurrence).map((item) => item.occurrenceDate).sort(),
-    ["2026-01-04", "2026-01-05"],
+    ["2026-01-03", "2026-01-04", "2026-01-05"],
   )
 })
