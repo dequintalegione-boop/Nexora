@@ -40,7 +40,7 @@ test("builds a fresh inbox task from a template without reusing mutable arrays",
   assert.equal(input.status, "inbox")
   assert.equal(input.dueDate, undefined)
   assert.equal(input.scheduledDate, undefined)
-  assert.deepEqual(input.projectIds, ["project-1"])
+  assert.deepEqual(input.projectIds, ["project-1", "project-2"])
   assert.notEqual(input.tags, template.tags)
   assert.notEqual(input.links, template.links)
   assert.notEqual(input.projectIds, template.projectIds)
