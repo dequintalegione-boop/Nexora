@@ -151,11 +151,11 @@ export function updateRecurrenceSeriesTasks(
       recurrenceRule: rule
         ? {
             ...rule,
-            weekdays: rule.weekdays ? [...rule.weekdays] : undefined,
-            byDay: rule.byDay?.map((item) => ({ ...item })),
-            byMonthDay: rule.byMonthDay ? [...rule.byMonthDay] : undefined,
-            byMonth: rule.byMonth ? [...rule.byMonth] : undefined,
-            excludeDates: rule.excludeDates ? [...rule.excludeDates] : undefined,
+            ...(rule.weekdays ? { weekdays: [...rule.weekdays] } : {}),
+            ...(rule.byDay ? { byDay: rule.byDay.map((item) => ({ ...item })) } : {}),
+            ...(rule.byMonthDay ? { byMonthDay: [...rule.byMonthDay] } : {}),
+            ...(rule.byMonth ? { byMonth: [...rule.byMonth] } : {}),
+            ...(rule.excludeDates ? { excludeDates: [...rule.excludeDates] } : {}),
           }
         : undefined,
       repeat: rule?.frequency === "daily" || rule?.frequency === "weekly" ? rule.frequency : undefined,

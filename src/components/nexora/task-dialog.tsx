@@ -413,7 +413,7 @@ export function TaskDialog() {
                     <option value="-1">Последний</option>
                   </Select>
                 </div>
-                <p className="mt-1 text-[11px] text-muted">Например: первый понедельник или последняя пятница месяца</p>
+                <p className="mt-1 text-[11px] text-muted">Для месячного правила — первый/последний день недели месяца; в годовом правиле укажите BYMONTH, чтобы выбрать конкретные месяцы</p>
               </div>
               {task.recurrenceRule.frequency === "yearly" && (
                 <div>
@@ -481,12 +481,13 @@ export function TaskDialog() {
                   className="w-full"
                   type="number"
                   min={1}
+                  max={10000}
                   value={task.recurrenceRule.count ?? ""}
                   placeholder="Без ограничения"
                   onChange={(e) => updateTask(task.id, {
                     recurrenceRule: {
                       ...task.recurrenceRule!,
-                      count: e.target.value ? Math.max(1, Number(e.target.value)) : undefined,
+                      count: e.target.value ? Math.min(10000, Math.max(1, Math.floor(Number(e.target.value) || 1))) : undefined,
                       until: e.target.value ? undefined : task.recurrenceRule?.until,
                     },
                   })}
