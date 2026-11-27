@@ -271,7 +271,6 @@ export class TaskService {
       !sameValue(before.projectIds, after.projectIds)
     ) {
       publish("task.projects.changed")
-      publish("task.moved")
     }
     if (!sameValue(before.reminders, after.reminders)) publish("task.reminders.changed")
     if (!sameValue(before.dependsOn, after.dependsOn)) publish("task.dependencies.changed")
