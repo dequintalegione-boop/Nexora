@@ -1120,7 +1120,15 @@ export function CalendarPage() {
     event.preventDefault()
     const targetDay = addDays(day, offset)
     const target = miniCalendarRef.current?.querySelector<HTMLButtonElement>('[data-mini-day="' + targetDay + '"]')
-    target?.focus()
+    if (target) {
+      target.focus()
+      return
+    }
+    const nextDate = parseISODate(targetDay)
+    setCursor({ year: nextDate.getFullYear(), month: nextDate.getMonth() })
+    window.requestAnimationFrame(() => {
+      miniCalendarRef.current?.querySelector<HTMLButtonElement>('[data-mini-day="' + targetDay + '"]')?.focus()
+    })
   }
 
   return (
