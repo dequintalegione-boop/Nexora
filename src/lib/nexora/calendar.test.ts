@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { getAgendaLoadIncrement, getCalendarCreatePatch, getCalendarDayActivity, getCalendarDayDropPatch, getCalendarDropMinutes, getCalendarDropPatch, getCalendarResizePatch, getCalendarSelectionRange, getCalendarSessionRange, getCalendarTaskTime, layoutCalendarEvents } from "./calendar.ts"
+import { getAgendaLoadIncrement, getCalendarCreatePatch, getCalendarDayActivity, getCalendarDayDropPatch, getCalendarDropMinutes, getCalendarFitPixelsPerHour, getCalendarDropPatch, getCalendarResizePatch, getCalendarSelectionRange, getCalendarSessionRange, getCalendarTaskTime, layoutCalendarEvents } from "./calendar.ts"
 import type { Task, TimeSession } from "./types.ts"
 
 const task: Task = {
@@ -121,6 +121,14 @@ test("quarter-hour snap supports precise selection and drop positions", () => {
   })
   assert.equal(getCalendarDropMinutes(293, 100, 440, 6 * 60, 10 * 60, 15), 7 * 60 + 45)
   assert.equal(getCalendarDropMinutes(320, 100, 440, 6 * 60, 10 * 60, 60), 8 * 60)
+})
+
+
+test("fit-to-window computes a bounded hour height from the available planner viewport", () => {
+  assert.equal(getCalendarFitPixelsPerHour(656, 82, 6, 22), 35)
+  assert.equal(getCalendarFitPixelsPerHour(240, 82, 6, 22), null)
+  assert.equal(getCalendarFitPixelsPerHour(4000, 100, 6, 22), 132)
+  assert.equal(getCalendarFitPixelsPerHour(656, 82, 22, 6), null)
 })
 
 test("completed time sessions are clipped to their local calendar day", () => {
