@@ -69,6 +69,7 @@ export function TasksPage() {
         if (quickFilter === "unblocked") return !getDependencyState(t, tasks).isBlocked
         return true
       })
+      .filter((t) => matchesTaskFilterGroup(t, advancedFilter, tasks))
       .sort((a, b) => {
         const prio = { critical: 0, high: 1, medium: 2, low: 3, none: 4 }
         if (sortBy === "due") return (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31")
@@ -94,6 +95,7 @@ export function TasksPage() {
     setSortBy(saved.sortBy)
     setQuickFilter(saved.quickFilter)
     setSearch(saved.search)
+    setAdvancedFilter(saved.advancedFilter ?? createTaskFilterGroup())
     setLayout(saved.layout)
     if (saved.columns?.length) useUI.setState({ taskTableColumns: saved.columns })
     setView("active")
