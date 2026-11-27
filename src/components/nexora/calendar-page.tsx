@@ -1549,10 +1549,10 @@ export function CalendarPage() {
                 type="button"
                 aria-label="Уменьшить масштаб"
                 title="Уменьшить масштаб"
-                disabled={pixelsPerHour <= 66}
+                disabled={pixelsPerHour <= 20}
                 onClick={() => {
                   setFitToWindow(false)
-                  setPixelsPerHour((value) => Math.max(66, value - 11))
+                  setPixelsPerHour((value) => Math.max(20, value - 11))
                 }}
               >−</button>
               <output aria-live="polite">{pixelsPerHour} px/ч</output>
@@ -1560,10 +1560,10 @@ export function CalendarPage() {
                 type="button"
                 aria-label="Увеличить масштаб"
                 title="Увеличить масштаб"
-                disabled={pixelsPerHour >= 132}
+                disabled={pixelsPerHour >= 200}
                 onClick={() => {
                   setFitToWindow(false)
-                  setPixelsPerHour((value) => Math.min(132, value + 11))
+                  setPixelsPerHour((value) => Math.min(200, value + 11))
                 }}
               >+</button>
             </div>
