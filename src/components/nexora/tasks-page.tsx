@@ -116,6 +116,7 @@ export function TasksPage() {
   }, [tasks, taskViewItems, filter, priorityFilter, projectFilter, search, view, quickFilter, today, weekLimit, sortBy, advancedFilter])
 
   const isRecurrenceInstance = (task: TaskViewItem) => Boolean(task.recurrenceParentId && task.occurrenceDate)
+  const isRecurrenceSeries = (task: TaskViewItem) => Boolean((task.recurrenceRule || task.repeat) && !task.recurrenceParentId)
 
   const openTask = (task: TaskViewItem) => {
     if (task.virtualOccurrence && task.recurrenceParentId && task.occurrenceDate) {
@@ -461,6 +462,7 @@ export function TasksPage() {
                       onClick={() => openTask(task)}
                     >
                       <div className="font-medium">{task.title}</div>
+                      {isRecurrenceSeries(task) && <span className="mt-1 block text-[10px] text-sky-300">Серия повторений</span>}
                       {isRecurrenceInstance(task) && <span className="mt-1 block text-[10px] text-teal-300">Повтор · {task.occurrenceDate}</span>}
                       <div className="mt-1 flex flex-wrap gap-1">
                         <Badge priority={task.priority}>{priorityLabels[task.priority]}</Badge>
@@ -495,6 +497,7 @@ export function TasksPage() {
                       title: (
                         <span className="inline-flex flex-wrap items-center gap-2">
                           {task.title}
+                          {isRecurrenceSeries(task) && <span className="text-[10px] text-sky-300">Серия</span>}
                           {isRecurrenceInstance(task) && <span className="text-[10px] text-teal-300">Повтор · {task.occurrenceDate}</span>}
                         </span>
                       ),
@@ -536,6 +539,7 @@ export function TasksPage() {
               </Select>}
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">{task.title}</div>
+                {isRecurrenceSeries(task) && <div className="text-[10px] text-sky-300">Серия повторений</div>}
                 {isRecurrenceInstance(task) && <div className="text-[10px] text-teal-300">Повтор · {task.occurrenceDate}</div>}
                 {task.dueDate && <div className="text-xs text-muted">до {task.dueDate}</div>}
               </div>
