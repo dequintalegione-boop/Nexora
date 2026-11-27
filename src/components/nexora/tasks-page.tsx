@@ -6,7 +6,7 @@ import { addDays, isoDate } from "@/lib/nexora/dates"
 import type { TaskStatus, Priority } from "@/lib/nexora/types"
 import { Button, Card, Input, Select, Badge } from "./ui"
 import { getDependencyState, getTaskChildren } from "@/lib/nexora/task-logic"
-import { parseQuickTaskInput } from "@/lib/nexora/quick-task"
+import { parseQuickTaskInput } from "@/lib/nexora/quick-task"\nimport { createTaskFilterGroup, matchesTaskFilterGroup, type TaskFilterGroup } from "@/lib/nexora/task-filters"\nimport { TaskFilterBuilder } from "./task-filter-builder"
 
 export function TasksPage() {
   const tasks = useNexora((s) => s.tasks)
@@ -39,7 +39,7 @@ export function TasksPage() {
   const [search, setSearch] = useState("")
   const [title, setTitle] = useState("")
   const [viewName, setViewName] = useState("")
-  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([])
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([])\n  const [advancedFilter, setAdvancedFilter] = useState<TaskFilterGroup>(() => createTaskFilterGroup())
 
   const today = isoDate()
   const weekLimit = addDays(today, 7)
@@ -73,7 +73,7 @@ export function TasksPage() {
         if (sortBy === "title") return a.title.localeCompare(b.title, "ru")
         return (prio[a.priority] ?? 5) - (prio[b.priority] ?? 5)
       })
-  }, [tasks, filter, priorityFilter, projectFilter, search, view, quickFilter, today, weekLimit, sortBy])
+  }, [tasks, filter, priorityFilter, projectFilter, search, view, quickFilter, today, weekLimit, sortBy, advancedFilter])
 
   const selectedCount = selectedTaskIds.filter((id) => filtered.some((task) => task.id === id)).length
   const toggleTaskSelection = (id: string) => {
@@ -99,7 +99,7 @@ export function TasksPage() {
   const handleSaveView = () => {
     const name = viewName.trim()
     if (!name) return
-    saveTaskView({ name, filter, priorityFilter, projectFilter, sortBy, quickFilter, search, layout, columns: taskTableColumns })
+    saveTaskView({ name, filter, priorityFilter, projectFilter, sortBy, quickFilter, search, layout, columns: taskTableColumns, advancedFilter })
     setViewName("")
   }
   const selectedTasks = filtered.filter((task) => selectedTaskIds.includes(task.id))
@@ -240,7 +240,7 @@ export function TasksPage() {
         </div>
       )}
 
-      {view === "active" && selectedCount > 0 && (
+      {view === "active" && (\n        <TaskFilterBuilder\n          group={advancedFilter}\n          onChange={setAdvancedFilter}\n          projects={projects.filter((project) => !project.archived)}\n          statusLabels={statusLabels}\n          priorityLabels={priorityLabels}\n        />\n      )}\n\n      {view === "active" && selectedCount > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-teal-400/20 bg-teal-400/5 p-3">
           <strong className="text-sm">Выбрано: {selectedCount}</strong>
           <Select value="" onChange={(event) => event.target.value && bulkSetStatus(event.target.value as TaskStatus)}>
