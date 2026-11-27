@@ -7,18 +7,27 @@ import {
   type AutomationConditionNode,
   type AutomationTrigger,
 } from "@/lib/nexora/automations"
-import type { TaskStatus, Priority } from "@/lib/nexora/types"
-import { STATUS_LABEL, PRIORITY_LABEL } from "@/lib/nexora/copy"
+import type { TaskStatus, Priority, Settings } from "@/lib/nexora/types"
+import {
+  getActiveTaskStatuses,
+  getActiveTaskPriorities,
+  getStatusLabel,
+  getTaskPriorityLabels,
+} from "@/lib/nexora/copy"
 import { Button, Card, Input, Select } from "./ui"
 
 type ConditionField = "status" | "priority" | "project" | "tag" | "title"
 
-function formatCondition(cond: AutomationConditionLeaf, projects: { id: string; title: string }[]): string {
+function formatCondition(
+  cond: AutomationConditionLeaf,
+  projects: { id: string; title: string }[],
+  settings?: Settings,
+): string {
   switch (cond.field) {
     case "status":
-      return `статус = ${STATUS_LABEL[cond.value] ?? cond.value}`
+      return `статус = ${getStatusLabel(cond.value, settings)}`
     case "priority":
-      return `приоритет = ${PRIORITY_LABEL[cond.value] ?? cond.value}`
+      return `приоритет = ${getTaskPriorityLabels(settings)[cond.value] ?? cond.value}`
     case "project": {
       const title = projects.find((p) => p.id === cond.value)?.title ?? cond.value
       return `проект = ${title}`
@@ -33,6 +42,7 @@ function formatCondition(cond: AutomationConditionLeaf, projects: { id: string; 
 function formatConditionsSummary(
   conditions: AutomationConditionNode[] | AutomationConditionLeaf[],
   projects: { id: string; title: string }[],
+  settings?: Settings,
 ): string {
   if (!conditions || conditions.length === 0) return "без условий"
 
@@ -40,22 +50,26 @@ function formatConditionsSummary(
     const group = conditions[0] as { operator: "and" | "or"; conditions: AutomationConditionNode[] }
     const parts = group.conditions
       .filter((c): c is AutomationConditionLeaf => !("operator" in c))
-      .map((c) => formatCondition(c, projects))
+      .map((c) => formatCondition(c, projects, settings))
     if (parts.length === 0) return "без условий"
     return parts.join(group.operator === "or" ? " ИЛИ " : " И ")
   }
 
   const leaves = conditions.filter((c): c is AutomationConditionLeaf => !("operator" in c))
   if (leaves.length === 0) return "без условий"
-  return leaves.map((c) => formatCondition(c, projects)).join(" И ")
+  return leaves.map((c) => formatCondition(c, projects, settings)).join(" И ")
 }
 
-function formatAction(action: AutomationAction, projects: { id: string; title: string }[]): string {
+function formatAction(
+  action: AutomationAction,
+  projects: { id: string; title: string }[],
+  settings?: Settings,
+): string {
   switch (action.type) {
     case "set_status":
-      return `статус → ${STATUS_LABEL[action.value] ?? action.value}`
+      return `статус → ${getStatusLabel(action.value, settings)}`
     case "set_priority":
-      return `приоритет → ${PRIORITY_LABEL[action.value] ?? action.value}`
+      return `приоритет → ${getTaskPriorityLabels(settings)[action.value] ?? action.value}`
     case "assign_project": {
       const title = projects.find((p) => p.id === action.value)?.title ?? action.value
       return `проект → ${title}`
@@ -82,6 +96,9 @@ export function AutomationSettingsCard() {
   const automationRuns = useNexora((s) => s.automationRuns ?? [])
   const projects = useNexora((s) => s.projects)
   const tasks = useNexora((s) => s.tasks)
+  const settings = useNexora((s) => s.settings)
+  const activeStatuses = getActiveTaskStatuses(settings)
+  const activePriorities = getActiveTaskPriorities(settings)
   const addAutomationRule = useNexora((s) => s.addAutomationRule)
   const updateAutomationRule = useNexora((s) => s.updateAutomationRule)
   const removeAutomationRule = useNexora((s) => s.removeAutomationRule)
@@ -135,8 +152,8 @@ export function AutomationSettingsCard() {
     else if (actionType === "set_priority") action = { type: actionType, value: actionValue as Priority }
     else if (actionType === "set_due_offset") action = { type: actionType, days: Number(actionValue) || 1 }
     else action = { type: actionType, value: actionValue }
-    return formatAction(action, projects)
-  }, [actionType, actionValue, projects])
+    return formatAction(action, projects, settings)
+  }, [actionType, actionValue, projects, settings])
 
   const addConditionToDraft = () => {
     if (conditionField === "none" || !conditionValue.trim()) return
@@ -255,7 +272,7 @@ export function AutomationSettingsCard() {
             <p className="text-xs text-muted mb-1">Условия ({logic === "or" ? "ИЛИ" : "И"}):</p>
             {draftConditions.map((cond, index) => (
               <div key={index} className="flex items-center justify-between gap-2 text-sm">
-                <span className="truncate">{formatCondition(cond, projects)}</span>
+                <span className="truncate">{formatCondition(cond, projects, settings)}</span>
                 <Button size="sm" variant="ghost" onClick={() => removeDraftCondition(index)}>
                   ×
                 </Button>
@@ -283,20 +300,18 @@ export function AutomationSettingsCard() {
           {conditionField === "status" ? (
             <Select value={conditionValue} onChange={(event) => setConditionValue(event.target.value)}>
               <option value="">Выберите статус</option>
-              {(["inbox", "planned", "in_progress", "waiting", "done", "cancelled"] as TaskStatus[]).map(
-                (value) => (
-                  <option key={value} value={value}>
-                    {STATUS_LABEL[value]}
-                  </option>
-                ),
-              )}
+              {activeStatuses.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
             </Select>
           ) : conditionField === "priority" ? (
             <Select value={conditionValue} onChange={(event) => setConditionValue(event.target.value)}>
               <option value="">Выберите приоритет</option>
-              {(["none", "low", "medium", "high", "critical"] as Priority[]).map((value) => (
-                <option key={value} value={value}>
-                  {PRIORITY_LABEL[value]}
+              {activePriorities.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
                 </option>
               ))}
             </Select>
@@ -365,19 +380,17 @@ export function AutomationSettingsCard() {
 
           {actionType === "set_status" ? (
             <Select value={actionValue} onChange={(event) => setActionValue(event.target.value)}>
-              {(["inbox", "planned", "in_progress", "waiting", "done", "cancelled"] as TaskStatus[]).map(
-                (value) => (
-                  <option key={value} value={value}>
-                    {STATUS_LABEL[value]}
-                  </option>
-                ),
-              )}
+              {activeStatuses.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
             </Select>
           ) : actionType === "set_priority" ? (
             <Select value={actionValue} onChange={(event) => setActionValue(event.target.value)}>
-              {(["none", "low", "medium", "high", "critical"] as Priority[]).map((value) => (
-                <option key={value} value={value}>
-                  {PRIORITY_LABEL[value]}
+              {activePriorities.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
                 </option>
               ))}
             </Select>
@@ -410,7 +423,7 @@ export function AutomationSettingsCard() {
               {" → "}
               {draftConditions.length === 0
                 ? "без условий"
-                : formatConditionsSummary(draftConditionTree, projects)}
+                : formatConditionsSummary(draftConditionTree, projects, settings)}
               {" → "}
               <span className="text-foreground/90">{previewActionLabel}</span>
             </p>
@@ -464,10 +477,10 @@ export function AutomationSettingsCard() {
                   {TRIGGER_LABEL[rule.trigger] ?? rule.trigger}
                   {rule.trigger === "task.due_soon" ? ` (${rule.daysBefore ?? 1} дн.)` : ""}
                   {" · "}
-                  {formatAction(rule.action, projects)}
+                  {formatAction(rule.action, projects, settings)}
                 </p>
                 <p className="text-xs text-muted">
-                  {formatConditionsSummary(rule.conditions, projects)}
+                  {formatConditionsSummary(rule.conditions, projects, settings)}
                 </p>
               </div>
               <div className="flex shrink-0 gap-2">
