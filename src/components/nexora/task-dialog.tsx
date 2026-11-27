@@ -1,7 +1,7 @@
 import { useNexora } from "@/lib/nexora/store"
 import { useUI } from "@/lib/nexora/ui-store"
 import { getTaskStatusLabels, getTaskPriorityLabels } from "@/lib/nexora/copy"
-import type { RecurrenceFrequency, TaskReminder } from "@/lib/nexora/types"
+import type { RecurrenceFrequency } from "@/lib/nexora/types"
 import type { TaskStatus, Priority } from "@/lib/nexora/types"
 import { Button, Card, Input, Select, Textarea } from "./ui"
 import { getDependencyState, getTaskChildren } from "@/lib/nexora/task-logic"
@@ -190,7 +190,7 @@ export function TaskDialog() {
                     value={reminder.at}
                     onChange={(event) => updateTask(task.id, {
                       reminders: task.reminders?.map((item) => item.id === reminder.id
-                        ? { ...item, at: event.target.value || undefined }
+                        ? { ...item, at: event.target.value || undefined, lastTriggeredAt: undefined }
                         : item),
                     })}
                   />
