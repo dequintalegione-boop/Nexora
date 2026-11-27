@@ -49,6 +49,24 @@ export type Measurement = "boolean" | "number" | "duration"
 export type DirectionColor = "accent" | "ok" | "warn"
 export type SessionKind = "free" | "focus" | "break"
 
+export type PomodoroPhase = "focus" | "short_break" | "long_break"
+
+export interface PomodoroSettings {
+  focusMinutes: number
+  shortBreakMinutes: number
+  longBreakMinutes: number
+  cyclesBeforeLongBreak: number
+  autoStartNext: boolean
+}
+
+export interface ActivePomodoroState {
+  phase: PomodoroPhase
+  completedFocusCycles: number
+  phaseDurationMs: number
+  cyclesBeforeLongBreak: number
+  autoStartNext: boolean
+}
+
 export interface HistoryNote {
   at: string
   change: string
@@ -233,6 +251,7 @@ export interface ActiveTimer {
   label?: string
   accumulatedMs?: number
   pausedAt?: string
+  pomodoro?: ActivePomodoroState
 }
 
 export interface Settings {
@@ -244,6 +263,7 @@ export interface Settings {
   /** Full priority catalog (built-in + custom). */
   taskPriorities?: PriorityDefinition[]
   notificationsEnabled?: boolean
+  pomodoro?: PomodoroSettings
   initialized: boolean
   theme: ThemeMode
   accent: string

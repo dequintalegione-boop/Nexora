@@ -2,6 +2,8 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import { STATUS_LABEL, WIDGETS, isDoneStatus } from "./copy"
 import { buildSeed } from "./seed"
+import { DEFAULT_POMODORO_SETTINGS, getNextPomodoroPhase, getPomodoroPhaseDurationMs, normalizePomodoroSettings } from "./pomodoro"
+import { correctTimeSession } from "./time-tracking"
 import { getTasksDueForAutomation, getTasksDueSoonForAutomation, runTaskAutomations } from "./automations"
 import { CURRENT_SCHEMA_VERSION, migratePersistedData } from "./migrate"
 import type { TaskAutomationRule } from "./automations"
@@ -19,6 +21,7 @@ import type {
   TaskStatus,
   RecurrenceRule,
   TimeSession,
+  PomodoroPhase,
 } from "./types"
 
 function nid(prefix: string): string {
@@ -39,6 +42,7 @@ export function defaultSettings(): Settings {
     widgetOrder: WIDGETS.map((w) => w.id),
     hiddenWidgets: [],
     notificationsEnabled: false,
+    pomodoro: { ...DEFAULT_POMODORO_SETTINGS },
   }
 }
 
@@ -94,9 +98,12 @@ type Store = Persisted & {
   addGoal: (input: Partial<Goal> & { title: string }) => string
   updateGoal: (id: string, patch: Partial<Goal>) => void
   startTimer: (input?: { taskId?: string; title?: string; kind?: SessionKind }) => void
+  startPomodoro: (input?: { taskId?: string; title?: string }) => void
+  advancePomodoro: (force?: boolean) => void
   pauseTimer: () => void
   resumeTimer: () => void
   stopTimer: () => string | null
+  updateTimeSession: (id: string, patch: { startedAt?: string; endedAt?: string; title?: string }) => boolean
   setTimerIntent: (taskId: string | null) => void
   addAutomationRule: (rule: Omit<TaskAutomationRule, "id" | "createdAt" | "updatedAt">) => string
   updateAutomationRule: (id: string, patch: Partial<TaskAutomationRule>) => void
@@ -624,6 +631,116 @@ export const useNexora = create<Store>()(
         })
       },
 
+      startPomodoro: (input) => {
+        const now = nowISO()
+        const config = normalizePomodoroSettings(get().settings.pomodoro)
+        set({
+          activeTimer: {
+            kind: "focus",
+            startedAt: now,
+            sessionStartedAt: now,
+            taskId: input?.taskId,
+            label: input?.title ?? "Pomodoro · Фокус",
+            accumulatedMs: 0,
+            pomodoro: {
+              phase: "focus",
+              completedFocusCycles: 0,
+              phaseDurationMs: getPomodoroPhaseDurationMs("focus", config),
+              cyclesBeforeLongBreak: config.cyclesBeforeLongBreak,
+              autoStartNext: config.autoStartNext,
+            },
+          },
+        })
+      },
+
+      advancePomodoro: (force = false) => {
+        const current = get().activeTimer
+        const plan = current?.pomodoro
+        if (!current || !plan) return
+
+        const elapsedMs = Math.max(
+          0,
+          (current.accumulatedMs ?? 0) +
+            (current.pausedAt ? 0 : Date.now() - new Date(current.startedAt).getTime()),
+        )
+        const reachedEnd = elapsedMs >= plan.phaseDurationMs
+        if (!force && !reachedEnd) return
+
+        // Without auto-start, pause at the exact phase boundary and wait for confirmation.
+        if (!force && !plan.autoStartNext) {
+          set({
+            activeTimer: {
+              ...current,
+              pausedAt: nowISO(),
+              accumulatedMs: plan.phaseDurationMs,
+            },
+          })
+          return
+        }
+
+        const now = nowISO()
+        const recordedMs = Math.min(elapsedMs, plan.phaseDurationMs)
+        const session: TimeSession | null = recordedMs >= 1_000
+          ? {
+              id: nid("sess"),
+              createdAt: now,
+              updatedAt: now,
+              kind: plan.phase === "focus" ? "focus" : "break",
+              startedAt: current.sessionStartedAt ?? current.startedAt,
+              endedAt: now,
+              taskId: current.taskId,
+              title: current.label ?? (plan.phase === "focus" ? "Pomodoro · Фокус" : "Pomodoro · Перерыв"),
+              durationMinutes: Math.max(1, Math.round(recordedMs / 60_000)),
+            }
+          : null
+
+        const next = getNextPomodoroPhase(
+          plan.phase,
+          plan.completedFocusCycles,
+          plan.cyclesBeforeLongBreak,
+        )
+        const config = normalizePomodoroSettings(get().settings.pomodoro)
+        const nextKind: SessionKind = next.phase === "focus" ? "focus" : "break"
+        const nextLabel = next.phase === "focus"
+          ? "Pomodoro · Фокус"
+          : next.phase === "long_break"
+            ? "Pomodoro · Длинный перерыв"
+            : "Pomodoro · Короткий перерыв"
+        const nextActive = {
+          kind: nextKind,
+          startedAt: now,
+          sessionStartedAt: now,
+          taskId: current.taskId,
+          label: nextLabel,
+          accumulatedMs: 0,
+          pomodoro: {
+            ...next,
+            phaseDurationMs: getPomodoroPhaseDurationMs(next.phase as PomodoroPhase, config),
+            cyclesBeforeLongBreak: plan.cyclesBeforeLongBreak,
+            autoStartNext: plan.autoStartNext,
+          },
+        }
+
+        set((state) => {
+          const tasks = session?.kind === "focus" && session.taskId
+            ? state.tasks.map((task) =>
+                task.id === session.taskId
+                  ? {
+                      ...task,
+                      actualMinutes: (task.actualMinutes ?? 0) + session.durationMinutes,
+                      updatedAt: now,
+                    }
+                  : task,
+              )
+            : state.tasks
+          return {
+            sessions: session ? [session, ...state.sessions] : state.sessions,
+            tasks,
+            activeTimer: nextActive,
+          }
+        })
+      },
+
       pauseTimer: () =>
         set((s) => {
           if (!s.activeTimer || s.activeTimer.pausedAt) return s
@@ -670,7 +787,7 @@ export const useNexora = create<Store>()(
           durationMinutes,
         }
         set((state) => {
-          const tasks = state.activeTimer?.taskId
+          const tasks = state.activeTimer?.taskId && state.activeTimer.kind === "focus"
             ? state.tasks.map((t) =>
                 t.id === state.activeTimer!.taskId
                   ? {
@@ -688,6 +805,29 @@ export const useNexora = create<Store>()(
           }
         })
         return session.id
+      },
+
+      updateTimeSession: (id, patch) => {
+        let updated = false
+        set((state) => {
+          const result = correctTimeSession(state.sessions, id, patch, nowISO())
+          if (!result) return state
+          updated = true
+          const durationDelta = result.updated.durationMinutes - result.previous.durationMinutes
+          const tasks = result.previous.taskId && result.previous.kind === "focus"
+            ? state.tasks.map((task) =>
+                task.id === result.previous.taskId
+                  ? {
+                      ...task,
+                      actualMinutes: Math.max(0, (task.actualMinutes ?? 0) + durationDelta),
+                      updatedAt: result.updated.updatedAt,
+                    }
+                  : task,
+              )
+            : state.tasks
+          return { sessions: result.sessions, tasks }
+        })
+        return updated
       },
 
       setTimerIntent: (taskId) => set({ timerIntent: taskId }),

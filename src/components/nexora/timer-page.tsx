@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react"
-import { Clock3, Pause, Play, Square } from "lucide-react"
+import { Clock3, Pause, Play, Square, Pencil, Check, X } from "lucide-react"
 import { useNexora } from "@/lib/nexora/store"
-import type { SessionKind } from "@/lib/nexora/types"
-import { Button, Card } from "./ui"
+import { Button, Card, Input } from "./ui"
+import type { PomodoroSettings, SessionKind } from "@/lib/nexora/types"
+import { normalizePomodoroSettings } from "@/lib/nexora/pomodoro"
 
 const KIND_LABEL: Record<SessionKind, string> = {
   focus: "Фокус",
@@ -18,15 +19,49 @@ function formatDuration(milliseconds: number) {
   return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":")
 }
 
+function toLocalDateTimeInput(value: string) {
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return ""
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 16)
+}
+
+function phaseLabel(phase: "focus" | "short_break" | "long_break") {
+  if (phase === "focus") return "Фокус"
+  return phase === "long_break" ? "Длинный перерыв" : "Короткий перерыв"
+}
+
+type SessionEditor = {
+  id: string
+  title: string
+  startedAt: string
+  endedAt: string
+}
+
 export function TimerPage() {
   const activeTimer = useNexora((state) => state.activeTimer)
   const sessions = useNexora((state) => state.sessions)
+  const settings = useNexora((state) => state.settings)
+  const updateSettings = useNexora((state) => state.updateSettings)
   const startTimer = useNexora((state) => state.startTimer)
+  const startPomodoro = useNexora((state) => state.startPomodoro)
+  const advancePomodoro = useNexora((state) => state.advancePomodoro)
+  const updateTimeSession = useNexora((state) => state.updateTimeSession)
   const pauseTimer = useNexora((state) => state.pauseTimer)
   const resumeTimer = useNexora((state) => state.resumeTimer)
   const stopTimer = useNexora((state) => state.stopTimer)
   const [kind, setKind] = useState<SessionKind>("focus")
+  const [mode, setMode] = useState<"stopwatch" | "pomodoro">("stopwatch")
   const [now, setNow] = useState(() => Date.now())
+  const [editor, setEditor] = useState<SessionEditor | null>(null)
+  const [editorError, setEditorError] = useState("")
+
+  const pomodoroSettings = normalizePomodoroSettings(settings.pomodoro)
+  const updatePomodoro = (patch: Partial<PomodoroSettings>) => {
+    updateSettings({
+      pomodoro: normalizePomodoroSettings({ ...pomodoroSettings, ...patch }),
+    })
+  }
 
   useEffect(() => {
     if (!activeTimer || activeTimer.pausedAt) return
@@ -41,15 +76,46 @@ export function TimerPage() {
           (activeTimer.pausedAt ? 0 : now - new Date(activeTimer.startedAt).getTime())
       )
     : 0
+  const pomodoro = activeTimer?.pomodoro
+  const remainingMs = pomodoro ? Math.max(0, pomodoro.phaseDurationMs - elapsedMs) : 0
+  const displayTime = pomodoro ? remainingMs : elapsedMs
+  const phaseCompleted = Boolean(pomodoro && remainingMs === 0)
+
+  useEffect(() => {
+    if (!pomodoro || activeTimer?.pausedAt || !activeTimer) return
+    if (elapsedMs >= pomodoro.phaseDurationMs) advancePomodoro()
+  }, [pomodoro?.phase, pomodoro?.phaseDurationMs, activeTimer?.startedAt, activeTimer?.pausedAt, elapsedMs, advancePomodoro])
 
   const handleStart = () => {
-    startTimer({ kind, title: KIND_LABEL[kind] })
+    if (mode === "pomodoro") startPomodoro()
+    else startTimer({ kind, title: KIND_LABEL[kind] })
     setNow(Date.now())
   }
 
   const handleStop = () => {
     stopTimer()
     setNow(Date.now())
+  }
+
+  const saveSessionCorrection = () => {
+    if (!editor) return
+    const start = new Date(editor.startedAt)
+    const end = new Date(editor.endedAt)
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+      setEditorError("Время окончания должно быть позже времени начала.")
+      return
+    }
+    const saved = updateTimeSession(editor.id, {
+      startedAt: start.toISOString(),
+      endedAt: end.toISOString(),
+      title: editor.title,
+    })
+    if (!saved) {
+      setEditorError("Не удалось сохранить исправление. Проверьте время начала и окончания.")
+      return
+    }
+    setEditor(null)
+    setEditorError("")
   }
 
   return (
@@ -64,17 +130,32 @@ export function TimerPage() {
         </p>
       </header>
 
+      {!activeTimer && (
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button size="sm" variant={mode === "stopwatch" ? "primary" : "secondary"} onClick={() => setMode("stopwatch")}>
+            Секундомер
+          </Button>
+          <Button size="sm" variant={mode === "pomodoro" ? "primary" : "secondary"} onClick={() => setMode("pomodoro")}>
+            Pomodoro
+          </Button>
+        </div>
+      )}
+
       <Card className="space-y-6 p-6 text-center sm:p-8">
         <div className="text-6xl font-mono font-semibold tabular-nums tracking-tight sm:text-7xl">
-          {formatDuration(elapsedMs)}
+          {formatDuration(displayTime)}
         </div>
         <p className="text-sm text-muted">
-          {activeTimer
-            ? `${KIND_LABEL[activeTimer.kind]} · ${activeTimer.pausedAt ? "на паузе" : "идёт"}`
-            : "Готов к новой сессии"}
+          {pomodoro
+            ? "Pomodoro · " + phaseLabel(pomodoro.phase) + " · цикл " +
+              pomodoro.completedFocusCycles + "/" + pomodoro.cyclesBeforeLongBreak +
+              (phaseCompleted ? " · этап завершён" : "")
+            : activeTimer
+              ? KIND_LABEL[activeTimer.kind] + " · " + (activeTimer.pausedAt ? "на паузе" : "идёт")
+              : mode === "pomodoro" ? "Готов к циклу Pomodoro" : "Готов к новой сессии"}
         </p>
 
-        {!activeTimer && (
+        {!activeTimer && mode === "stopwatch" && (
           <div className="flex flex-wrap justify-center gap-2">
             {(["focus", "break", "free"] as SessionKind[]).map((value) => (
               <Button
@@ -89,32 +170,68 @@ export function TimerPage() {
           </div>
         )}
 
-        <div className="flex flex-wrap justify-center gap-3">
-          {!activeTimer ? (
-            <Button onClick={handleStart}>
-              <span className="inline-flex items-center gap-2"><Play size={16} />Начать</span>
+        {!activeTimer ? (
+          <Button onClick={handleStart}>
+            <span className="inline-flex items-center gap-2"><Play size={16} />{mode === "pomodoro" ? "Начать Pomodoro" : "Начать"}</span>
+          </Button>
+        ) : (
+          <div className="flex flex-wrap justify-center gap-3">
+            <Button
+              variant="secondary"
+              disabled={phaseCompleted}
+              onClick={() => {
+                if (activeTimer.pausedAt) resumeTimer()
+                else pauseTimer()
+                setNow(Date.now())
+              }}
+            >
+              <span className="inline-flex items-center gap-2">
+                {activeTimer.pausedAt ? <Play size={16} /> : <Pause size={16} />}
+                {activeTimer.pausedAt ? "Продолжить" : "Пауза"}
+              </span>
             </Button>
-          ) : (
-            <>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  if (activeTimer.pausedAt) resumeTimer()
-                  else pauseTimer()
-                  setNow(Date.now())
-                }}
-              >
-                <span className="inline-flex items-center gap-2">
-                  {activeTimer.pausedAt ? <Play size={16} /> : <Pause size={16} />}
-                  {activeTimer.pausedAt ? "Продолжить" : "Пауза"}
-                </span>
+            {pomodoro && (
+              <Button variant="secondary" onClick={() => advancePomodoro(true)}>
+                {phaseCompleted ? "Следующий этап" : "Пропустить этап"}
               </Button>
-              <Button onClick={handleStop}>
-                <span className="inline-flex items-center gap-2"><Square size={15} />Завершить и сохранить</span>
-              </Button>
-            </>
-          )}
+            )}
+            <Button onClick={handleStop}>
+              <span className="inline-flex items-center gap-2"><Square size={15} />Завершить и сохранить</span>
+            </Button>
+          </div>
+        )}
+      </Card>
+
+      <Card className="space-y-4 p-5">
+        <div>
+          <h2 className="font-medium">Настройки Pomodoro</h2>
+          <p className="mt-1 text-xs text-muted">Настройки сохраняются в профиле и входят в JSON-бэкап.</p>
         </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <label className="space-y-1 text-left text-xs text-muted">
+            Фокус, мин
+            <Input type="number" min={1} max={180} value={pomodoroSettings.focusMinutes}
+              onChange={(event) => updatePomodoro({ focusMinutes: Number(event.target.value) })} />
+          </label>
+          <label className="space-y-1 text-left text-xs text-muted">
+            Короткий перерыв
+            <Input type="number" min={1} max={60} value={pomodoroSettings.shortBreakMinutes}
+              onChange={(event) => updatePomodoro({ shortBreakMinutes: Number(event.target.value) })} />
+          </label>
+          <label className="space-y-1 text-left text-xs text-muted">
+            Длинный перерыв
+            <Input type="number" min={1} max={90} value={pomodoroSettings.longBreakMinutes}
+              onChange={(event) => updatePomodoro({ longBreakMinutes: Number(event.target.value) })} />
+          </label>
+          <label className="space-y-1 text-left text-xs text-muted">
+            Циклов до длинного
+            <Input type="number" min={2} max={12} value={pomodoroSettings.cyclesBeforeLongBreak}
+              onChange={(event) => updatePomodoro({ cyclesBeforeLongBreak: Number(event.target.value) })} />
+          </label>
+        </div>
+        <Button size="sm" variant="secondary" onClick={() => updatePomodoro({ autoStartNext: !pomodoroSettings.autoStartNext })}>
+          Автозапуск следующего этапа: {pomodoroSettings.autoStartNext ? "включён" : "выключен"}
+        </Button>
       </Card>
 
       <Card className="space-y-4 p-5">
@@ -127,16 +244,53 @@ export function TimerPage() {
         ) : (
           <div className="space-y-3">
             {sessions.slice(0, 10).map((session) => (
-              <div key={session.id} className="flex items-center justify-between gap-3 border-b border-white/10 pb-3 last:border-0 last:pb-0">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{session.title || KIND_LABEL[session.kind]}</p>
-                  <p className="text-xs text-muted">
-                    {new Date(session.startedAt).toLocaleString("ru-RU")}
-                  </p>
-                </div>
-                <span className="shrink-0 text-sm tabular-nums text-teal-400">
-                  {session.durationMinutes ?? 0} мин
-                </span>
+              <div key={session.id} className="border-b border-white/10 pb-3 last:border-0 last:pb-0">
+                {editor?.id === session.id ? (
+                  <div className="space-y-2">
+                    <Input value={editor.title} placeholder="Название сессии"
+                      onChange={(event) => setEditor({ ...editor, title: event.target.value })} />
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <label className="space-y-1 text-left text-xs text-muted">
+                        Начало
+                        <Input type="datetime-local" value={editor.startedAt}
+                          onChange={(event) => setEditor({ ...editor, startedAt: event.target.value })} />
+                      </label>
+                      <label className="space-y-1 text-left text-xs text-muted">
+                        Окончание
+                        <Input type="datetime-local" value={editor.endedAt}
+                          onChange={(event) => setEditor({ ...editor, endedAt: event.target.value })} />
+                      </label>
+                    </div>
+                    {editorError && <p role="alert" className="text-xs text-red-400">{editorError}</p>}
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={saveSessionCorrection}><Check size={14} />Сохранить</Button>
+                      <Button size="sm" variant="ghost" onClick={() => { setEditor(null); setEditorError("") }}><X size={14} />Отмена</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{session.title || KIND_LABEL[session.kind]}</p>
+                      <p className="text-xs text-muted">
+                        {new Date(session.startedAt).toLocaleString("ru-RU")} · {KIND_LABEL[session.kind]}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="text-sm tabular-nums text-teal-400">{session.durationMinutes ?? 0} мин</span>
+                      <Button size="sm" variant="ghost" onClick={() => {
+                        setEditor({
+                          id: session.id,
+                          title: session.title ?? "",
+                          startedAt: toLocalDateTimeInput(session.startedAt),
+                          endedAt: toLocalDateTimeInput(session.endedAt),
+                        })
+                        setEditorError("")
+                      }}>
+                        <Pencil size={14} />
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
