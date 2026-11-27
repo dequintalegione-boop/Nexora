@@ -38,6 +38,7 @@ const sampleTask = {
     until: "2026-06-01",
   },
   recurrenceParentId: "series-1",
+  recurrenceOverride: true,
   occurrenceDate: "2026-12-09",
   occurrenceNumber: 12,
   recurrenceStartDate: "2025-01-01",
