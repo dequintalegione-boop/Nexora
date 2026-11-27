@@ -9,6 +9,8 @@ import { getDependencyState, getTaskChildren } from "@/lib/nexora/task-logic"
 import { parseQuickTaskInput } from "@/lib/nexora/quick-task"
 import { createTaskFilterGroup, matchesTaskFilterGroup, type TaskFilterGroup } from "@/lib/nexora/task-filters"
 import { TaskFilterBuilder } from "./task-filter-builder"
+import { getKanbanColumns, getKanbanDropPatch, getKanbanTaskColumnIds } from "@/lib/nexora/kanban"
+import type { KanbanGroupBy } from "@/lib/nexora/kanban"
 
 export function TasksPage() {
   const tasks = useNexora((s) => s.tasks)
@@ -29,6 +31,8 @@ export function TasksPage() {
   const removeTaskView = useUI((s) => s.removeTaskView)
   const taskTableColumns = useUI((s) => s.taskTableColumns ?? DEFAULT_TASK_TABLE_COLUMNS)
   const toggleTaskTableColumn = useUI((s) => s.toggleTaskTableColumn)
+  const kanbanGroupBy = useUI((s) => s.kanbanGroupBy)
+  const setKanbanGroupBy = useUI((s) => s.setKanbanGroupBy)
 
   const [view, setView] = useState<"active" | "archive" | "trash">("active")
   const [layout, setLayout] = useState<"list" | "table" | "kanban">("list")
@@ -79,6 +83,7 @@ export function TasksPage() {
       })
   }, [tasks, filter, priorityFilter, projectFilter, search, view, quickFilter, today, weekLimit, sortBy, advancedFilter])
 
+  const kanbanColumns = getKanbanColumns(kanbanGroupBy, projects, statusLabels, priorityLabels)
   const selectedCount = selectedTaskIds.filter((id) => filtered.some((task) => task.id === id)).length
   const toggleTaskSelection = (id: string) => {
     setSelectedTaskIds((current) => current.includes(id)
@@ -96,6 +101,7 @@ export function TasksPage() {
     setQuickFilter(saved.quickFilter)
     setSearch(saved.search)
     setAdvancedFilter(saved.advancedFilter ?? createTaskFilterGroup())
+    setKanbanGroupBy(saved.kanbanGroupBy ?? "status")
     setLayout(saved.layout)
     if (saved.columns?.length) useUI.setState({ taskTableColumns: saved.columns })
     setView("active")
@@ -104,7 +110,7 @@ export function TasksPage() {
   const handleSaveView = () => {
     const name = viewName.trim()
     if (!name) return
-    saveTaskView({ name, filter, priorityFilter, projectFilter, sortBy, quickFilter, search, layout, columns: taskTableColumns, advancedFilter })
+    saveTaskView({ name, filter, priorityFilter, projectFilter, sortBy, quickFilter, search, layout, columns: taskTableColumns, advancedFilter, kanbanGroupBy })
     setViewName("")
   }
   const selectedTasks = filtered.filter((task) => selectedTaskIds.includes(task.id))
@@ -274,51 +280,71 @@ export function TasksPage() {
       )}
 
       {view === "active" && layout === "kanban" ? (
-        <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-          {Object.entries(statusLabels).map(([status, label]) => {
-            const columnTasks = filtered.filter((task) => task.status === status)
-            return (
-              <section
-                key={status}
-                className="min-h-48 rounded-xl border border-white/10 bg-white/[0.025] p-2"
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => {
-                  event.preventDefault()
-                  if (draggedTaskId) setTaskStatus(draggedTaskId, status as TaskStatus)
-                  setDraggedTaskId(null)
-                }}
-              >
-                <div className="mb-2 flex items-center justify-between px-1">
-                  <h2 className="text-sm font-semibold">{label}</h2>
-                  <span className="text-xs text-muted">{columnTasks.length}</span>
-                </div>
-                <div className="space-y-2">
-                  {columnTasks.map((task) => (
-                    <Card
-                      key={task.id}
-                      draggable
-                      onDragStart={() => setDraggedTaskId(task.id)}
-                      onDragEnd={() => setDraggedTaskId(null)}
-                      onClick={() => setTaskId(task.id)}
-                      className={`cursor-grab p-3 transition hover:border-teal-400/40 ${draggedTaskId === task.id ? "opacity-40" : ""}`}
-                    >
-                      <div className="mb-2 flex items-start gap-2">
-                        <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} onClick={(event) => event.stopPropagation()} aria-label={`Выбрать задачу ${task.title}`} />
-                        <p className="text-sm font-medium">{task.title}</p>
-                      </div>
-                      {task.dueDate && <p className="mt-1 text-xs text-muted">Срок: {task.dueDate}</p>}
-                      <div className="mt-2 flex flex-wrap items-center gap-1">
-                        <Badge priority={task.priority}>{priorityLabels[task.priority]}</Badge>
-                        {getDependencyState(task, tasks).isBlocked && <Badge priority="high">Блок</Badge>}
-                        {getTaskChildren(tasks, task.id).length > 0 && <span className="text-xs text-muted">Подзадач: {getTaskChildren(tasks, task.id).length}</span>}
-                      </div>
-                    </Card>
-                  ))}
-                  {columnTasks.length === 0 && <p className="px-1 py-4 text-center text-xs text-muted">Перетащите задачу сюда</p>}
-                </div>
-              </section>
-            )
-          })}
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-white/[0.025] p-3">
+            <label className="text-xs text-muted" htmlFor="kanban-group-by">Группировать по</label>
+            <Select id="kanban-group-by" value={kanbanGroupBy} onChange={(event) => setKanbanGroupBy(event.target.value as KanbanGroupBy)}>
+              <option value="status">Статусу</option>
+              <option value="priority">Приоритету</option>
+              <option value="project">Проекту</option>
+            </Select>
+            <span className="text-xs text-muted">
+              {kanbanGroupBy === "project"
+                ? "Задачи с несколькими проектами отображаются в каждой соответствующей колонке."
+                : "Перетаскивание карточки меняет выбранное поле задачи."}
+            </span>
+          </div>
+          <div className="grid auto-cols-[minmax(260px,1fr)] grid-flow-col gap-3 overflow-x-auto pb-2">
+            {kanbanColumns.map((column) => {
+              const columnTasks = filtered.filter((task) => getKanbanTaskColumnIds(task, kanbanGroupBy).includes(column.id))
+              return (
+                <section
+                  key={column.id}
+                  className="min-h-48 min-w-0 rounded-xl border border-white/10 bg-white/[0.025] p-2"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    if (draggedTaskId) {
+                      const patch = getKanbanDropPatch(kanbanGroupBy, column.id)
+                      if (patch?.status) setTaskStatus(draggedTaskId, patch.status)
+                      else if (patch) updateTask(draggedTaskId, patch)
+                    }
+                    setDraggedTaskId(null)
+                  }}
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                    <h2 className="truncate text-sm font-semibold">{column.label}</h2>
+                    <span className="shrink-0 rounded-md bg-white/5 px-2 py-0.5 text-xs text-muted">{columnTasks.length}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {columnTasks.map((task) => (
+                      <Card
+                        key={task.id}
+                        draggable
+                        onDragStart={() => setDraggedTaskId(task.id)}
+                        onDragEnd={() => setDraggedTaskId(null)}
+                        onClick={() => setTaskId(task.id)}
+                        className={`cursor-grab p-3 transition hover:border-teal-400/40 ${draggedTaskId === task.id ? "opacity-40" : ""}`}
+                      >
+                        <div className="mb-2 flex items-start gap-2">
+                          <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} onClick={(event) => event.stopPropagation()} aria-label={`Выбрать задачу ${task.title}`} />
+                          <p className="text-sm font-medium">{task.title}</p>
+                        </div>
+                        {task.dueDate && <p className="mt-1 text-xs text-muted">Срок: {task.dueDate}</p>}
+                        {task.scheduledDate && <p className="mt-1 text-xs text-muted">План: {task.scheduledDate}</p>}
+                        <div className="mt-2 flex flex-wrap items-center gap-1">
+                          <Badge priority={task.priority}>{priorityLabels[task.priority]}</Badge>
+                          {getDependencyState(task, tasks).isBlocked && <Badge priority="high">Блок</Badge>}
+                          {getTaskChildren(tasks, task.id).length > 0 && <span className="text-xs text-muted">Подзадач: {getTaskChildren(tasks, task.id).length}</span>}
+                        </div>
+                      </Card>
+                    ))}
+                    {columnTasks.length === 0 && <p className="px-1 py-4 text-center text-xs text-muted">Перетащите задачу сюда</p>}
+                  </div>
+                </section>
+              )
+            })}
+          </div>
         </div>
       ) : view === "active" && layout === "table" ? (
         <div className="space-y-2">

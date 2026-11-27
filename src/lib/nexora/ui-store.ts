@@ -2,6 +2,7 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import type { Priority, TaskStatus } from "./types"
 import type { TaskFilterGroup } from "./task-filters"
+import type { KanbanGroupBy } from "./kanban"
 
 export type TaskTableColumn =
   | "title"
@@ -44,16 +45,19 @@ export type SavedTaskView = {
   layout: "list" | "table" | "kanban"
   columns?: TaskTableColumn[]
   advancedFilter?: TaskFilterGroup
+  kanbanGroupBy?: KanbanGroupBy
 }
 
 type UIState = {
   taskId: string | null
   savedTaskViews: SavedTaskView[]
   taskTableColumns: TaskTableColumn[]
+  kanbanGroupBy: KanbanGroupBy
   setTaskId: (id: string | null) => void
   saveTaskView: (view: Omit<SavedTaskView, "id">) => void
   removeTaskView: (id: string) => void
   toggleTaskTableColumn: (column: TaskTableColumn) => void
+  setKanbanGroupBy: (groupBy: KanbanGroupBy) => void
 }
 
 export const useUI = create<UIState>()(
@@ -62,6 +66,7 @@ export const useUI = create<UIState>()(
       taskId: null,
       savedTaskViews: [],
       taskTableColumns: DEFAULT_TASK_TABLE_COLUMNS,
+      kanbanGroupBy: "status",
       setTaskId: (taskId) => set({ taskId }),
       saveTaskView: (view) => set((state) => ({
         savedTaskViews: [
@@ -72,10 +77,10 @@ export const useUI = create<UIState>()(
       removeTaskView: (id) => set((state) => ({
         savedTaskViews: state.savedTaskViews.filter((view) => view.id !== id),
       })),
+      setKanbanGroupBy: (kanbanGroupBy) => set({ kanbanGroupBy }),
       toggleTaskTableColumn: (column) => set((state) => {
         const current = state.taskTableColumns ?? DEFAULT_TASK_TABLE_COLUMNS
         if (current.includes(column)) {
-          // The task title is the table's anchor and cannot be hidden.
           if (column === "title" || current.length === 1) return state
           return { taskTableColumns: current.filter((item) => item !== column) }
         }
@@ -87,11 +92,13 @@ export const useUI = create<UIState>()(
       partialize: (state) => ({
         savedTaskViews: state.savedTaskViews,
         taskTableColumns: state.taskTableColumns,
+        kanbanGroupBy: state.kanbanGroupBy,
       }),
       merge: (persisted, current) => ({
         ...current,
         ...(persisted as Partial<UIState>),
         taskTableColumns: (persisted as Partial<UIState>).taskTableColumns ?? DEFAULT_TASK_TABLE_COLUMNS,
+        kanbanGroupBy: (persisted as Partial<UIState>).kanbanGroupBy ?? "status",
       }),
     },
   ),
