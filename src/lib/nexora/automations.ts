@@ -6,6 +6,8 @@ export type AutomationTrigger =
   | "task.completed"
   /** Fires once when a task's dueDate is today or in the past (while still open). */
   | "task.due"
+  /** Fires once when a task's dueDate is within N days in the future (not including overdue/today). */
+  | "task.due_soon"
 
 /** Leaf condition (single field check) */
 export type AutomationConditionLeaf =
@@ -46,6 +48,11 @@ export interface TaskAutomationRule {
    */
   conditions: AutomationConditionNode[] | AutomationConditionLeaf[]
   action: AutomationAction
+  /**
+   * For `task.due_soon`: fire when dueDate is between tomorrow and today+daysBefore (inclusive).
+   * Defaults to 1 if omitted.
+   */
+  daysBefore?: number
   createdAt: string
   updatedAt: string
 }
@@ -212,6 +219,45 @@ export function getTasksDueForAutomation(
     if (task.archived || task.deletedAt) return false
     if (task.status === "done" || task.status === "cancelled") return false
     if (!task.dueDate || task.dueDate > today) return false
+    // Fire at most once per task per calendar day of the due date evaluation
+    const key = `${task.id}:${today}`
+    return !recentSuccessKeys.has(key)
+  })
+}
+
+function addUtcDays(isoDate: string, days: number): string {
+  const d = new Date(`${isoDate}T00:00:00.000Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * Returns open tasks whose dueDate falls within (today, today+daysBefore]
+ * and that have not yet received a successful "task.due_soon" run today.
+ * Due-today/overdue tasks are handled by `task.due`, not this helper.
+ */
+export function getTasksDueSoonForAutomation(
+  tasks: Task[],
+  runs: TaskAutomationRun[],
+  daysBefore: number,
+  now = new Date(),
+): Task[] {
+  const days = Math.max(1, Math.floor(daysBefore) || 1)
+  const today = now.toISOString().slice(0, 10)
+  const horizon = addUtcDays(today, days)
+
+  const recentSuccessKeys = new Set(
+    runs
+      .filter((run) => run.trigger === "task.due_soon" && run.result === "success")
+      .map((run) => `${run.taskId}:${run.executedAt.slice(0, 10)}`),
+  )
+
+  return tasks.filter((task) => {
+    if (task.archived || task.deletedAt) return false
+    if (task.status === "done" || task.status === "cancelled") return false
+    if (!task.dueDate) return false
+    // Strictly after today and within the horizon
+    if (task.dueDate <= today || task.dueDate > horizon) return false
     const key = `${task.id}:${today}`
     return !recentSuccessKeys.has(key)
   })
