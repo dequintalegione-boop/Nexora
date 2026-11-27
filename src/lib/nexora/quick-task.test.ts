@@ -49,3 +49,19 @@ test("keeps unsupported relative deadlines in the title", () => {
   assert.equal(draft.title, "Обсудить до через 53 недели")
   assert.equal(draft.dueDate, undefined)
 })
+
+test("parses a relative scheduled date in months", () => {
+  const draft = parseQuickTaskInput("Подготовить квартальный отчёт через 3 месяца", "2026-11-27")
+  assert.equal(draft.title, "Подготовить квартальный отчёт")
+  assert.equal(draft.scheduledDate, "2027-02-27")
+})
+
+test("clamps month offsets to the last day of shorter months", () => {
+  const draft = parseQuickTaskInput("Проверить оплату через 1 месяц", "2026-01-31")
+  assert.equal(draft.scheduledDate, "2026-02-28")
+})
+
+test("keeps unsupported month offsets in the title", () => {
+  const draft = parseQuickTaskInput("Вернуться к вопросу через 25 месяцев", "2026-11-27")
+  assert.equal(draft.title, "Вернуться к вопросу через 25 месяцев")
+})
