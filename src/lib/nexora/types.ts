@@ -145,6 +145,8 @@ export interface Task {
   repeat?: Repeat
   recurrenceRule?: RecurrenceRule
   recurrenceParentId?: ID
+  /** True when a user explicitly detached this occurrence for one-off edits. */
+  recurrenceOverride?: boolean
   occurrenceDate?: string
   occurrenceNumber?: number
   recurrenceStartDate?: string
