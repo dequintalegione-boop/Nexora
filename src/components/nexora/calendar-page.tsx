@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Plus } from "lucide-react"
+import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Play, Plus } from "lucide-react"
 import {
   addDays,
   isoDate,
@@ -30,7 +30,7 @@ import { Card } from "./ui"
 import "./calendar-page.css"
 
 /** Calendar views supported by the internal Nexora task calendar. */
-type CalendarView = "year" | "month" | "week" | "days" | "day" | "list"
+type CalendarView = "year" | "month" | "week" | "days" | "day" | "list" | "agenda"
 type CalendarTask = Task & { virtualOccurrence?: boolean; recurrenceSeriesId?: string }
 
 type TaskMinutes = { start: number; end: number }
@@ -139,6 +139,7 @@ export function CalendarPage() {
   const [showScheduled, setShowScheduled] = useState(true)
   const [showWeekends, setShowWeekends] = useState(true)
   const [dayCount, setDayCount] = useState(3)
+  const [agendaDayCount, setAgendaDayCount] = useState(7)
   const [slotStartHour, setSlotStartHour] = useState(6)
   const [slotEndHour, setSlotEndHour] = useState(22)
   const [resizeDraft, setResizeDraft] = useState<ResizeDraft | null>(null)
@@ -181,6 +182,9 @@ export function CalendarPage() {
   const tasks = useNexora((s) => s.tasks)
   const projects = useNexora((s) => s.projects)
   const sessions = useNexora((s) => s.sessions)
+  const activeTimer = useNexora((s) => s.activeTimer)
+  const startTimer = useNexora((s) => s.startTimer)
+  const setTaskStatus = useNexora((s) => s.setTaskStatus)
   const addTask = useNexora((s) => s.addTask)
   const updateTask = useNexora((s) => s.updateTask)
   const materializeTaskOccurrence = useNexora((s) => s.materializeTaskOccurrence)
@@ -188,6 +192,8 @@ export function CalendarPage() {
   const setTaskOccurrence = useUI((s) => s.setTaskOccurrence)
   const priorityLabels = getTaskPriorityLabels(settings)
   const statusDefinitions = getTaskStatusDefinitions(settings).filter((status) => !status.hidden)
+  const doneStatusId = statusDefinitions.find((status) => status.category === "done")?.id
+    ?? getTaskStatusDefinitions(settings).find((status) => status.category === "done")?.id
 
   const weekDays = useMemo(() => {
     const weekStart = startOfWeek(selected, weekStartsOn)
@@ -207,6 +213,11 @@ export function CalendarPage() {
   const listDays = useMemo(
     () => Array.from({ length: LIST_DAYS }, (_, i) => addDays(selected, i)),
     [selected],
+  )
+
+  const agendaDays = useMemo(
+    () => Array.from({ length: agendaDayCount }, (_, i) => addDays(selected, i)),
+    [agendaDayCount, selected],
   )
 
   const cells = useMemo(
@@ -239,8 +250,9 @@ export function CalendarPage() {
     }
     if (view === "days") return [customDays[0] ?? selected, customDays[customDays.length - 1] ?? selected]
     if (view === "day") return [selected, selected]
+    if (view === "agenda") return [agendaDays[0] ?? selected, agendaDays[agendaDays.length - 1] ?? selected]
     return [listDays[0] ?? selected, listDays[listDays.length - 1] ?? selected]
-  }, [view, cursor.year, cells, selected, visibleWeekDays, customDays, listDays])
+  }, [view, cursor.year, cells, selected, visibleWeekDays, customDays, listDays, agendaDays])
 
   const visibleTasks = useMemo<CalendarTask[]>(() => {
     const activeSeriesIds = new Set(
@@ -324,8 +336,9 @@ export function CalendarPage() {
       return `${format(parseISODate(customDays[0]), "d MMM", { locale: ru })} – ${format(parseISODate(customDays[customDays.length - 1]), "d MMM yyyy", { locale: ru })}`
     }
     if (view === "day") return format(parseISODate(selected), "EEEE, d MMMM yyyy", { locale: ru })
+    if (view === "agenda") return `${format(parseISODate(agendaDays[0] ?? selected), "d MMM", { locale: ru })} – ${format(parseISODate(agendaDays[agendaDays.length - 1] ?? selected), "d MMM yyyy", { locale: ru })}`
     return `${format(parseISODate(listDays[0]), "d MMM", { locale: ru })} – ${format(parseISODate(listDays[LIST_DAYS - 1]), "d MMM yyyy", { locale: ru })}`
-  }, [view, cursor, weekDays, visibleWeekDays, customDays, selected, listDays])
+  }, [view, cursor, weekDays, visibleWeekDays, customDays, selected, listDays, agendaDays])
 
   const shift = (direction: -1 | 1) => {
     if (view === "year") {
@@ -343,7 +356,7 @@ export function CalendarPage() {
       setSelectedSlot(null)
       return
     }
-    const step = view === "list" ? LIST_DAYS : view === "day" ? 1 : view === "days" ? dayCount : 7
+    const step = view === "list" ? LIST_DAYS : view === "agenda" ? agendaDayCount : view === "day" ? 1 : view === "days" ? dayCount : 7
     const next = addDays(selected, direction * step)
     setSelected(next)
     setSelectedSlot(null)
@@ -362,6 +375,18 @@ export function CalendarPage() {
     setSelectedSlot(null)
     const date = parseISODate(selected)
     setCursor({ year: date.getFullYear(), month: date.getMonth() })
+  }
+
+  const completeAgendaTask = (task: CalendarTask) => {
+    if (!doneStatusId) return
+    const taskId = task.virtualOccurrence ? materializeTaskOccurrence(task) : task.id
+    if (taskId) setTaskStatus(taskId, doneStatusId)
+  }
+
+  const startAgendaTimer = (task: CalendarTask) => {
+    if (activeTimer) return
+    const taskId = task.virtualOccurrence ? materializeTaskOccurrence(task) : task.id
+    if (taskId) startTimer({ taskId, title: task.title, kind: "focus" })
   }
 
   const onEventClick = (task: CalendarTask) => {
@@ -1094,6 +1119,7 @@ export function CalendarPage() {
             ["days", `${dayCount}д`],
             ["day", "Д"],
             ["list", "С"],
+            ["agenda", "Пов."],
           ] as const).map(([id, label]) => (
             <button
               key={id}
@@ -1101,7 +1127,7 @@ export function CalendarPage() {
               className="nexora-calendar-view-button"
               onClick={() => setCalendarView(id)}
               aria-pressed={view === id}
-              title={{ year: "Год", month: "Месяц", week: "Неделя", days: "Несколько дней", day: "День", list: "Список" }[id]}
+              title={{ year: "Год", month: "Месяц", week: "Неделя", days: "Несколько дней", day: "День", list: "Список", agenda: "Повестка дня" }[id]}
             >
               {label}
             </button>
@@ -1122,7 +1148,7 @@ export function CalendarPage() {
           <input type="checkbox" checked={showTimeEntries} onChange={(event) => setShowTimeEntries(event.target.checked)} />
           Фактическое время
         </label>
-        {(view === "week" || view === "days") ? (
+        {(view === "week" || view === "days" || view === "agenda") ? (
           <label className="nexora-calendar-toggle">
             <input type="checkbox" checked={showWeekends} onChange={(event) => setShowWeekends(event.target.checked)} />
             Выходные
@@ -1337,6 +1363,175 @@ export function CalendarPage() {
                 {format(parseISODate(selected), "EEEE, d MMMM", { locale: ru })}
               </div>
               {renderTimeGrid([selected])}
+            </div>
+          </div>
+        ) : null}
+
+
+        {view === "agenda" ? (
+          <div className="nexora-calendar-agenda divide-y divide-white/[0.08]">
+            {agendaDays.filter((day) => showWeekends || ![0, 6].includes(parseISODate(day).getDay())).map((day) => {
+              const dayTasks = [...tasksForDay(day)].sort((a, b) => {
+                const aTime = taskMinutes(a)?.start ?? -1
+                const bTime = taskMinutes(b)?.start ?? -1
+                return aTime - bTime || a.title.localeCompare(b.title, "ru")
+              })
+              const daySessions = showTimeEntries ? sessions.flatMap((session) => {
+                const range = getCalendarSessionRange(session, day)
+                return range ? [{ session, range }] : []
+              }).sort((a, b) => a.range.start - b.range.start) : []
+              const allDayTasks = dayTasks.filter((task) => task.allDay || (!taskMinutes(task) && !task.startAt))
+              const allDayIds = new Set(allDayTasks.map((task) => task.id))
+              const isToday = day === today
+              const isPast = day < today
+              return (
+                <section
+                  key={day}
+                  data-calendar-drop-day={day}
+                  className={cn(
+                    "nexora-calendar-agenda-day px-4 py-4",
+                    isToday && "nexora-calendar-agenda-today",
+                    touchTaskDrag?.active && touchTaskDrag.target?.day === day && "nexora-calendar-drop-target",
+                  )}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={handleDayDrop(day)}
+                >
+                  <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      className={cn("text-left text-sm font-semibold capitalize", isToday ? "text-sky-300" : "text-white/80")}
+                      onClick={() => setSelectedDate(day)}
+                    >
+                      {format(parseISODate(day), "EEEE, d MMMM", { locale: ru })}
+                      {isToday ? " · сегодня" : ""}
+                    </button>
+                    <span className="text-[10px] tabular-nums text-white/40">
+                      {dayTasks.length} задач{daySessions.length ? " · " + daySessions.length + " сессий" : ""}
+                    </span>
+                  </header>
+
+                  {dayTasks.length === 0 && daySessions.length === 0 ? (
+                    <p className="py-2 text-xs text-white/35">{isPast ? "Нет запланированных задач" : "Пока ничего не запланировано"}</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {allDayTasks.map((task) => (
+                        <div key={task.id} className="nexora-calendar-agenda-row">
+                          <button
+                            type="button"
+                            className={cn("nexora-calendar-agenda-task min-w-0 flex-1", PRIORITY_COLOR[task.priority] ?? PRIORITY_COLOR.none, isDoneStatus(task.status, settings) && "opacity-55 line-through", task.virtualOccurrence && "border-dashed")}
+                            onPointerDown={(event) => beginTouchTaskDrag(event, task)}
+                            onPointerMove={moveTouchTaskDrag}
+                            onPointerUp={finishTouchTaskDrag}
+                            onPointerCancel={cancelTouchTaskDrag}
+                            onClick={(event) => {
+                              if (handleTouchTaskClick(event)) return
+                              onEventClick(task)
+                            }}
+                            draggable={!task.virtualOccurrence || Boolean(task.recurrenceParentId && task.occurrenceDate)}
+                            onDragStart={(event) => {
+                              draggedTaskRef.current = task
+                              event.dataTransfer.setData("text/task-id", task.id)
+                              event.dataTransfer.effectAllowed = "move"
+                            }}
+                            onDragEnd={() => { draggedTaskRef.current = null }}
+                          >
+                            <span className="block truncate text-[12px] font-semibold">{task.title}</span>
+                            <span className="mt-1 block text-[10px] opacity-65">
+                              {task.dueDate === day ? "Дедлайн" : "Весь день"}
+                              {task.virtualOccurrence ? " · повтор " + task.occurrenceDate : ""}
+                            </span>
+                          </button>
+                          <div className="nexora-calendar-agenda-actions">
+                            {doneStatusId && !isDoneStatus(task.status, settings) ? (
+                              <button type="button" aria-label="Завершить задачу" title="Завершить" onClick={() => completeAgendaTask(task)}>
+                                <CheckCircle2 size={14} />
+                              </button>
+                            ) : null}
+                            <button type="button" aria-label="Запустить таймер" title={activeTimer ? "Сначала остановите текущий таймер" : "Запустить таймер"} disabled={Boolean(activeTimer)} onClick={() => startAgendaTimer(task)}>
+                              <Play size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+
+                      {dayTasks.filter((task) => !allDayIds.has(task.id)).map((task) => {
+                        const range = taskMinutes(task)
+                        const isDueOnly = task.dueDate === day && task.scheduledDate !== day && task.startAt?.slice(0, 10) !== day
+                        const isCompleted = isDoneStatus(task.status, settings)
+                        return (
+                          <div key={task.id} className="nexora-calendar-agenda-row">
+                            <button
+                              type="button"
+                              className={cn("nexora-calendar-agenda-task min-w-0 flex-1", PRIORITY_COLOR[task.priority] ?? PRIORITY_COLOR.none, isCompleted && "opacity-55 line-through", (isDueOnly || task.virtualOccurrence) && "border-dashed")}
+                              onPointerDown={(event) => beginTouchTaskDrag(event, task)}
+                              onPointerMove={moveTouchTaskDrag}
+                              onPointerUp={finishTouchTaskDrag}
+                              onPointerCancel={cancelTouchTaskDrag}
+                              onClick={(event) => {
+                                if (handleTouchTaskClick(event)) return
+                                onEventClick(task)
+                              }}
+                              draggable={!task.virtualOccurrence || Boolean(task.recurrenceParentId && task.occurrenceDate)}
+                              onDragStart={(event) => {
+                                draggedTaskRef.current = task
+                                event.dataTransfer.setData("text/task-id", task.id)
+                                event.dataTransfer.effectAllowed = "move"
+                              }}
+                              onDragEnd={() => { draggedTaskRef.current = null }}
+                            >
+                              <span className="block truncate text-[12px] font-semibold">{task.title}</span>
+                              <span className="mt-1 block text-[10px] tabular-nums opacity-65">
+                                {range ? formatRange(range.start, range.end) : isDueOnly ? "Дедлайн" : "Запланировано"}
+                                {task.virtualOccurrence ? " · повтор " + task.occurrenceDate : ""}
+                              </span>
+                            </button>
+                            <div className="nexora-calendar-agenda-actions">
+                              {doneStatusId && !isCompleted ? (
+                                <button type="button" aria-label="Завершить задачу" title="Завершить" onClick={() => completeAgendaTask(task)}>
+                                  <CheckCircle2 size={14} />
+                                </button>
+                              ) : null}
+                              <button type="button" aria-label="Запустить таймер" title={activeTimer ? "Сначала остановите текущий таймер" : "Запустить таймер"} disabled={Boolean(activeTimer)} onClick={() => startAgendaTimer(task)}>
+                                <Play size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+
+                      {daySessions.map(({ session, range }) => {
+                        const linkedTask = session.taskId ? tasks.find((task) => task.id === session.taskId) : undefined
+                        return (
+                          <div key={session.id} className="nexora-calendar-agenda-session">
+                            <span className="w-28 shrink-0 text-[10px] tabular-nums text-teal-200/75">
+                              {formatRange(range.start, range.end)}
+                            </span>
+                            {session.taskId ? (
+                              <button type="button" className="min-w-0 flex-1 truncate text-left text-[11px] text-teal-100/85 hover:underline" onClick={() => setTaskId(session.taskId!)}>
+                                {session.title ?? linkedTask?.title ?? "Фактическое время"}
+                              </button>
+                            ) : (
+                              <span className="min-w-0 flex-1 truncate text-[11px] text-teal-100/75">{session.title ?? "Фактическое время"}</span>
+                            )}
+                            <span className="text-[9px] uppercase tracking-wide text-teal-200/50">факт</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </section>
+              )
+            })}
+            <div className="flex justify-center gap-2 p-4">
+              <button type="button" className="nexora-calendar-today" onClick={() => {
+                setSelected(addDays(selected, -7))
+                setAgendaDayCount((count) => Math.min(35, count + 7))
+              }}>
+                Предыдущие дни
+              </button>
+              <button type="button" className="nexora-calendar-new" disabled={agendaDayCount >= 35} onClick={() => setAgendaDayCount((count) => Math.min(35, count + 7))}>
+                Показать ещё 7 дней
+              </button>
             </div>
           </div>
         ) : null}
