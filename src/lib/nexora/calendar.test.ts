@@ -109,6 +109,20 @@ test("drag selection includes every half-hour slot in either direction and respe
   })
 })
 
+
+test("quarter-hour snap supports precise selection and drop positions", () => {
+  assert.deepEqual(getCalendarSelectionRange(9 * 60, 2, 15, 6 * 60, 22 * 60), {
+    start: 9 * 60,
+    end: 9 * 60 + 45,
+  })
+  assert.deepEqual(getCalendarSelectionRange(9 * 60, -2, 15, 6 * 60, 22 * 60), {
+    start: 8 * 60 + 30,
+    end: 9 * 60 + 15,
+  })
+  assert.equal(getCalendarDropMinutes(293, 100, 440, 6 * 60, 10 * 60, 15), 7 * 60 + 45)
+  assert.equal(getCalendarDropMinutes(320, 100, 440, 6 * 60, 10 * 60, 60), 8 * 60)
+})
+
 test("completed time sessions are clipped to their local calendar day", () => {
   const session: TimeSession = {
     id: "session-1",
