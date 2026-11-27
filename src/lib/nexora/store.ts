@@ -4,6 +4,7 @@ import { STATUS_LABEL, WIDGETS } from "./copy"
 import { addDays, isoDate } from "./dates"
 import { buildSeed } from "./seed"
 import { getTasksDueForAutomation, getTasksDueSoonForAutomation, runTaskAutomations } from "./automations"
+import { CURRENT_SCHEMA_VERSION, migratePersistedData } from "./migrate"
 import type { TaskAutomationRule } from "./automations"
 import { buildNextTaskOccurrence, canAddTaskDependency, canSetTaskParent, updateRecurrenceSeriesTasks } from "./task-logic"
 import type {
@@ -46,6 +47,7 @@ export function defaultSettings(): Settings {
 
 function emptyData(): Persisted {
   return {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     directions: [],
     projects: [],
     tasks: [],
@@ -134,6 +136,7 @@ export const useNexora = create<Store>()(
         const seed = buildSeed()
         set((state) => ({
           ...seed,
+          schemaVersion: CURRENT_SCHEMA_VERSION,
           settings: keepPrefs
             ? { ...seed.settings, ...state.settings, initialized: true }
             : { ...seed.settings, initialized: true },
@@ -141,7 +144,10 @@ export const useNexora = create<Store>()(
         }))
       },
 
-      replaceAll: (data) => set({ ...data, automationRules: data.automationRules ?? [], automationRuns: data.automationRuns ?? [], hydrated: true }),
+      replaceAll: (data) => {
+        const migrated = migratePersistedData(data)
+        set({ ...migrated.data, automationRules: migrated.data.automationRules ?? [], automationRuns: migrated.data.automationRuns ?? [], hydrated: true })
+      },
 
       updateSettings: (patch) =>
         set((s) => ({ settings: { ...s.settings, ...patch } })),
@@ -743,7 +749,17 @@ export const useNexora = create<Store>()(
     }),
     {
       name: "nexora-v1",
-      merge: (persisted, current) => ({ ...current, ...(persisted as Partial<Store>), automationRules: (persisted as Partial<Store>).automationRules ?? [], automationRuns: (persisted as Partial<Store>).automationRuns ?? [] }),
+      merge: (persisted, current) => {
+        const raw = { ...current, ...(persisted as Partial<Store>) } as Partial<Store>
+        const migrated = migratePersistedData(raw)
+        return {
+          ...current,
+          ...migrated.data,
+          automationRules: migrated.data.automationRules ?? [],
+          automationRuns: migrated.data.automationRuns ?? [],
+          schemaVersion: CURRENT_SCHEMA_VERSION,
+        }
+      },
       onRehydrateStorage: () => (state) => {
         state?.markHydrated()
       },
