@@ -23,7 +23,7 @@ import { expandTaskOccurrences } from "@/lib/nexora/recurrence"
 import { isDoneStatus, getTaskPriorityLabels } from "@/lib/nexora/copy"
 import { useNexora } from "@/lib/nexora/store"
 import { useUI } from "@/lib/nexora/ui-store"
-import type { Task, TimeSession } from "@/lib/nexora/types"
+import type { Task } from "@/lib/nexora/types"
 import { cn } from "@/lib/cn"
 import { Card } from "./ui"
 import "./calendar-page.css"
@@ -537,14 +537,14 @@ export function CalendarPage() {
         </div>
 
         <div
-          className="grid"
+          className="nexora-calendar-time-grid grid"
           style={{ gridTemplateColumns: `3.5rem repeat(${days.length}, minmax(9.5rem, 1fr))` }}
         >
           <div className="relative border-r border-white/10" style={{ height: gridHeight }}>
             {timeSlots.map((minutes) => minutes % 60 === 0 ? (
               <div
                 key={minutes}
-                className="absolute right-2 -translate-y-1/2 text-[10px] tabular-nums text-white/45"
+                className="nexora-calendar-time-label absolute right-2 -translate-y-1/2 text-[10px] tabular-nums text-white/45"
                 style={{ top: ((minutes - slotStart) / SLOT_STEP) * ROW_HEIGHT }}
               >
                 {localTimeLabel(minutes)}
@@ -1060,7 +1060,7 @@ export function CalendarPage() {
                   type="button"
                   className={cn(
                     "border-l border-white/10 py-3 transition hover:bg-white/[0.04]",
-                    day === today && "bg-sky-400/[0.07] text-sky-300",
+                    day === today && "nexora-calendar-today-header bg-sky-400/[0.07] text-sky-300",
                     day === selected && "font-semibold",
                   )}
                   onClick={() => setSelectedDate(day)}
@@ -1091,7 +1091,7 @@ export function CalendarPage() {
                   type="button"
                   className={cn(
                     "border-l border-white/10 py-3 transition hover:bg-white/[0.04]",
-                    day === today && "bg-sky-400/[0.07] text-sky-300",
+                    day === today && "nexora-calendar-today-header bg-sky-400/[0.07] text-sky-300",
                     day === selected && "font-semibold",
                   )}
                   onClick={() => setSelectedDate(day)}
