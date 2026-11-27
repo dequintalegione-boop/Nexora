@@ -14,6 +14,7 @@ import { createReminderTriggeredEventInput, type ReminderTriggeredInput } from "
 import { getTaskReminderTimestamp } from "./reminders"
 import { CURRENT_SCHEMA_VERSION, migratePersistedData } from "./migrate"
 import type { TaskAutomationRule } from "./automations"
+import type { TaskCsvApplyResult, TaskCsvConflictMode } from "./task-csv"
 import { buildNextTaskOccurrence, updateRecurrenceSeriesTasks } from "./task-logic"
 import type {
   DailyEntry,
@@ -89,6 +90,7 @@ type Store = Persisted & {
   moveWidget: (id: string, dir: -1 | 1) => void
   toggleWidget: (id: string) => void
   addTask: (input: Partial<Task> & { title: string }) => string
+  importTasks: (tasks: Task[], conflictMode?: TaskCsvConflictMode) => TaskCsvApplyResult
   updateTask: (id: string, patch: Partial<Task>) => void
   setTaskStatus: (id: string, status: TaskStatus) => void
   skipTaskOccurrence: (id: string) => boolean
@@ -277,6 +279,38 @@ export const useNexora = create<Store>()(
         })
         service.create(task, { source: "ui", correlationId: id })
         return id
+      },
+
+      importTasks: (tasks, conflictMode = "skip") => {
+        const service = createStoreTaskService(
+          () => get().tasks,
+          (nextTasks) => set({ tasks: nextTasks }),
+          (status) => isDoneStatus(status, get().settings),
+        )
+        let created = 0
+        let updated = 0
+        let skipped = 0
+
+        for (const task of tasks) {
+          const existing = get().tasks.find((current) => current.id === task.id)
+          if (existing) {
+            if (conflictMode === "skip") {
+              skipped += 1
+              continue
+            }
+            const patch = Object.fromEntries(
+              Object.entries(task).filter(([key]) => key !== "id" && key !== "createdAt" && key !== "updatedAt"),
+            ) as Partial<Omit<Task, "id" | "createdAt" | "updatedAt">>
+            const result = service.update(task.id, patch, { source: "import" })
+            if (result) updated += 1
+            else skipped += 1
+          } else {
+            service.create(task, { source: "import" })
+            created += 1
+          }
+        }
+
+        return { created, updated, skipped }
       },
 
       updateTask: (id, patch) => {

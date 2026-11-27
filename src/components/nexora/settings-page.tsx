@@ -9,6 +9,8 @@ import {
   serializeNexoraBackup,
 } from "@/lib/nexora/backup"
 import type { ParsedNexoraBackup } from "@/lib/nexora/backup"
+import { MAX_TASK_CSV_FILE_BYTES, parseTasksCsv, serializeTasksCsv } from "@/lib/nexora/task-csv"
+import type { TaskCsvConflictMode, TaskCsvImportResult } from "@/lib/nexora/task-csv"
 import type { ThemeMode, TaskStatus, Priority, Persisted } from "@/lib/nexora/types"
 import {
   getTaskStatusDefinitions,
@@ -38,6 +40,19 @@ function downloadJsonBackup(backup: ReturnType<typeof createNexoraBackup>, prefi
   const anchor = document.createElement("a")
   anchor.href = url
   anchor.download = prefix + "-" + new Date().toISOString().slice(0, 10) + ".json"
+  anchor.style.display = "none"
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function downloadTasksCsv(csv: string): void {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement("a")
+  anchor.href = url
+  anchor.download = "nexora-tasks-" + new Date().toISOString().slice(0, 10) + ".csv"
   anchor.style.display = "none"
   document.body.appendChild(anchor)
   anchor.click()
@@ -259,12 +274,21 @@ function PriorityCatalogEditor() {
 
 export function SettingsPage() {
   const settings = useNexora((s) => s.settings)
+  const tasks = useNexora((s) => s.tasks)
   const updateSettings = useNexora((s) => s.updateSettings)
   const loadSeed = useNexora((s) => s.loadSeed)
+  const importTasks = useNexora((s) => s.importTasks)
   const backupInputRef = useRef<HTMLInputElement | null>(null)
+  const csvInputRef = useRef<HTMLInputElement | null>(null)
   const [importPreview, setImportPreview] = useState<ParsedNexoraBackup | null>(null)
   const [importError, setImportError] = useState("")
   const [importNotice, setImportNotice] = useState("")
+  const [csvPreview, setCsvPreview] = useState<TaskCsvImportResult | null>(null)
+  const [csvError, setCsvError] = useState("")
+  const [csvNotice, setCsvNotice] = useState("")
+  const [csvConflictMode, setCsvConflictMode] = useState<TaskCsvConflictMode>("skip")
+  const existingTaskIds = new Set(tasks.map((task) => task.id))
+  const csvConflictCount = csvPreview?.tasks.filter((task) => existingTaskIds.has(task.id)).length ?? 0
 
   const exportBackup = () => {
     const data = useNexora.getState()
@@ -278,6 +302,47 @@ export function SettingsPage() {
     downloadJsonBackup(backup, "nexora-backup")
     setImportNotice("JSON-бэкап создан. Храните файл отдельно от устройства.")
     setImportError("")
+  }
+
+  const exportTasksCsv = () => {
+    downloadTasksCsv(serializeTasksCsv(useNexora.getState().tasks))
+    setCsvNotice("CSV-файл со всеми полями задач создан.")
+    setCsvError("")
+  }
+
+  const selectTasksCsvFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (!file) return
+
+    setCsvNotice("")
+    setCsvError("")
+    setCsvPreview(null)
+
+    if (file.size > MAX_TASK_CSV_FILE_BYTES) {
+      setCsvError("CSV-файл слишком большой. Максимальный размер — 25 МБ.")
+      return
+    }
+
+    try {
+      setCsvPreview(parseTasksCsv(await file.text()))
+    } catch (error) {
+      setCsvError(error instanceof Error ? error.message : "Не удалось проверить CSV-файл.")
+    }
+  }
+
+  const applyTasksCsvImport = () => {
+    if (!csvPreview || csvPreview.tasks.length === 0) return
+    try {
+      const result = importTasks(csvPreview.tasks, csvConflictMode)
+      setCsvNotice(
+        `Импорт завершён: создано ${result.created}, обновлено ${result.updated}, пропущено ${result.skipped}.`,
+      )
+      setCsvPreview(null)
+      setCsvError("")
+    } catch (error) {
+      setCsvError(error instanceof Error ? error.message : "Не удалось импортировать задачи из CSV.")
+    }
   }
 
   const selectBackupFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -454,6 +519,12 @@ export function SettingsPage() {
           <Button variant="secondary" onClick={() => backupInputRef.current?.click()}>
             Проверить и восстановить из файла
           </Button>
+          <Button variant="secondary" onClick={exportTasksCsv}>
+            Экспорт задач CSV
+          </Button>
+          <Button variant="secondary" onClick={() => csvInputRef.current?.click()}>
+            Импорт задач CSV
+          </Button>
           <Button variant="secondary" onClick={() => loadSeed(true)}>
             Загрузить демо-данные
           </Button>
@@ -465,6 +536,59 @@ export function SettingsPage() {
           className="sr-only"
           onChange={selectBackupFile}
         />
+        <input
+          ref={csvInputRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="sr-only"
+          onChange={selectTasksCsvFile}
+        />
+        {csvError && <p role="alert" className="text-sm text-red-400">{csvError}</p>}
+        {csvNotice && <p role="status" className="text-sm text-emerald-400">{csvNotice}</p>}
+        {csvPreview && (
+          <div className="space-y-3 rounded-lg border border-border p-3">
+            <div>
+              <h3 className="text-sm font-medium">Предпросмотр импорта CSV</h3>
+              <p className="mt-1 text-xs text-muted">
+                Строк в файле: {csvPreview.totalRows} · корректных задач: {csvPreview.tasks.length} ·
+                ошибок: {csvPreview.errors.length}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>Новые задачи: <strong>{csvPreview.tasks.length - csvConflictCount}</strong></div>
+              <div>Совпадающие ID: <strong>{csvConflictCount}</strong></div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted">Как обрабатывать совпадающие ID</label>
+              <Select value={csvConflictMode} onChange={(event) => setCsvConflictMode(event.target.value as TaskCsvConflictMode)}>
+                <option value="skip">Пропускать существующие задачи (безопасно)</option>
+                <option value="update">Обновлять существующие задачи</option>
+              </Select>
+            </div>
+            {csvPreview.warnings.length > 0 && (
+              <ul className="list-disc space-y-1 pl-5 text-xs text-amber-400">
+                {csvPreview.warnings.map((warning, index) => <li key={index}>{warning}</li>)}
+              </ul>
+            )}
+            {csvPreview.errors.length > 0 && (
+              <div className="space-y-1 text-xs text-red-400">
+                <p>Проблемные строки (показаны первые 5):</p>
+                {csvPreview.errors.slice(0, 5).map((error) => (
+                  <p key={error.row}>Строка {error.row}: {error.message}</p>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-muted">
+              CSV содержит только задачи. Для резервного копирования проектов, привычек, таймера и настроек используйте JSON.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={applyTasksCsvImport} disabled={csvPreview.tasks.length === 0}>
+                Импортировать {csvPreview.tasks.length} задач
+              </Button>
+              <Button variant="ghost" onClick={() => setCsvPreview(null)}>Отмена</Button>
+            </div>
+          </div>
+        )}
         {importError && <p role="alert" className="text-sm text-red-400">{importError}</p>}
         {importNotice && <p role="status" className="text-sm text-emerald-400">{importNotice}</p>}
         {importPreview && (
