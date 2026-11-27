@@ -10,6 +10,7 @@ export function SettingsPage() {
   const updateSettings = useNexora((s) => s.updateSettings)
   const loadSeed = useNexora((s) => s.loadSeed)
   const automationRules = useNexora((s) => s.automationRules ?? [])
+  const automationRuns = useNexora((s) => s.automationRuns ?? [])
   const projects = useNexora((s) => s.projects)
   const addAutomationRule = useNexora((s) => s.addAutomationRule)
   const updateAutomationRule = useNexora((s) => s.updateAutomationRule)
@@ -224,6 +225,17 @@ export function SettingsPage() {
             </div>
           ))}
         </div>
+        {automationRuns.length > 0 && (
+          <div className="space-y-2 border-t border-border pt-3">
+            <h3 className="text-sm font-medium">История запусков</h3>
+            {automationRuns.slice(0, 10).map((run) => (
+              <div key={run.id} className="flex items-center justify-between gap-2 text-xs">
+                <span className="min-w-0 truncate">{automationRules.find((rule) => rule.id === run.ruleId)?.name ?? "Удалённое правило"} · {run.message}</span>
+                <span className={run.result === "success" ? "text-emerald-500" : "text-muted"}>{run.result === "success" ? "Выполнено" : "Пропуск"}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
       <Card className="p-4 space-y-3">
         <div>
