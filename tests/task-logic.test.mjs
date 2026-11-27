@@ -164,6 +164,7 @@ test("series rule updates affect the root and future active occurrences only", (
     task("root", { recurrenceRule: { frequency: "weekly", interval: 1 } }),
     task("future-a", { recurrenceParentId: "root", occurrenceNumber: 2 }),
     task("future-b", { recurrenceParentId: "root", occurrenceNumber: 3, status: "in_progress" }),
+    task("customized", { recurrenceParentId: "root", occurrenceNumber: 6, recurrenceOverride: true, scheduledDate: "2026-01-20" }),
     task("completed", { recurrenceParentId: "root", occurrenceNumber: 1, status: "done" }),
     task("skipped", { recurrenceParentId: "root", occurrenceNumber: 4, status: "cancelled" }),
     task("archived", { recurrenceParentId: "root", occurrenceNumber: 5, archived: true }),
@@ -174,6 +175,8 @@ test("series rule updates affect the root and future active occurrences only", (
 
   assert.equal(result.updatedCount, 3)
   assert.deepEqual(result.tasks.find((item) => item.id === "root")?.recurrenceRule, rule)
+  assert.equal(result.tasks.find((item) => item.id === "customized")?.recurrenceRule, undefined)
+  assert.equal(result.tasks.find((item) => item.id === "customized")?.scheduledDate, "2026-01-20")
   assert.deepEqual(result.tasks.find((item) => item.id === "future-a")?.recurrenceRule, rule)
   assert.deepEqual(result.tasks.find((item) => item.id === "future-b")?.recurrenceRule, rule)
   assert.equal(result.tasks.find((item) => item.id === "completed")?.recurrenceRule, undefined)
@@ -438,6 +441,7 @@ test("virtual occurrence materialization keeps its date identity but removes ser
   assert.equal(materialized?.startAt, "2026-01-08T09:00:00.000Z")
   assert.equal(materialized?.recurrenceRule, undefined)
   assert.equal(materialized?.repeat, undefined)
+  assert.equal(materialized?.recurrenceOverride, true)
   assert.equal(materialized?.createdAt, "2026-01-07T10:00:00.000Z")
   assert.match(materialized?.history?.at(-1)?.change ?? "", /отделён от серии/)
   assert.equal(buildMaterializedTaskOccurrence(task("ordinary"), "new-id", "2026-01-07T10:00:00.000Z"), null)
