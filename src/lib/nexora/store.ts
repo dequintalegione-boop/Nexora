@@ -17,6 +17,7 @@ import type {
   Settings,
   Task,
   TaskStatus,
+  RecurrenceRule,
   TimeSession,
 } from "./types"
 
@@ -68,6 +69,7 @@ type Store = Persisted & {
   updateTask: (id: string, patch: Partial<Task>) => void
   setTaskStatus: (id: string, status: TaskStatus) => void
   skipTaskOccurrence: (id: string) => boolean
+  updateRecurrenceSeries: (id: string, rule?: RecurrenceRule) => number
   archiveTask: (id: string) => void
   restoreTask: (id: string) => void
   removeTask: (id: string) => void
@@ -225,6 +227,38 @@ export const useNexora = create<Store>()(
 
           return { tasks: nextTasks }
         }),
+
+      updateRecurrenceSeries: (id, rule) => {
+        const current = get().tasks.find((task) => task.id === id)
+        if (!current || current.deletedAt || current.archived) return 0
+        const seriesId = current.recurrenceParentId ?? current.id
+        const now = nowISO()
+        let updated = 0
+
+        set((state) => ({
+          tasks: state.tasks.map((task) => {
+            const belongsToSeries =
+              task.id === seriesId || task.recurrenceParentId === seriesId
+            const isEditableOccurrence =
+              task.id === seriesId ||
+              (task.status !== "done" && task.status !== "cancelled" && !task.archived && !task.deletedAt)
+            if (!belongsToSeries || !isEditableOccurrence) return task
+
+            updated += 1
+            return {
+              ...task,
+              recurrenceRule: rule ? { ...rule, weekdays: rule.weekdays ? [...rule.weekdays] : undefined } : undefined,
+              repeat: rule?.frequency === "daily" || rule?.frequency === "weekly" ? rule.frequency : undefined,
+              updatedAt: now,
+              history: [
+                ...(task.history ?? []),
+                { at: now, change: "Правило повторения обновлено для всей серии" },
+              ].slice(-100),
+            }
+          }),
+        }))
+        return updated
+      },
 
       skipTaskOccurrence: (id) => {
         const current = get().tasks.find((task) => task.id === id)
