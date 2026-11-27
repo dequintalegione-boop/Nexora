@@ -38,7 +38,7 @@ const sampleData: Persisted = {
       dependsOn: ["dependency-1"],
       estimatedMinutes: 90,
       actualMinutes: 35,
-      recurrenceRule: { frequency: "weekly", interval: 2, weekdays: [1, 3], count: 8, until: "2026-06-01" },
+      recurrenceRule: { frequency: "monthly", interval: 2, byDay: [{ weekday: 1, ordinal: 1 }, { weekday: 5, ordinal: -1 }], byMonthDay: [1, -1], byMonth: [1, 6], weekStart: 1, excludeDates: ["2026-03-17"], count: 8, until: "2026-06-01" },
       reminders: [{ id: "reminder-1", minutesBefore: 30, enabled: true, anchor: "due" }],
       links: [{ id: "link-1", title: "Документ", url: "https://example.com/doc" }],
       tags: ["данные"],
@@ -163,6 +163,18 @@ test("rejects duplicate entity ids and malformed task fields before restore", ()
     tasks: [{ ...sampleData.tasks[0], dependsOn: "not-an-array" } as unknown as Persisted["tasks"][number]],
   })
   assert.throws(() => parseNexoraBackup(JSON.stringify(malformed)), /должно быть массивом строк/i)
+
+  const malformedRule = createNexoraBackup({
+    ...sampleData,
+    tasks: [{
+      ...sampleData.tasks[0],
+      recurrenceRule: {
+        ...sampleData.tasks[0].recurrenceRule!,
+        byMonthDay: [0],
+      },
+    }],
+  })
+  assert.throws(() => parseNexoraBackup(JSON.stringify(malformedRule)), /BYMONTHDAY/i)
 })
 
 test("rejects a future backup envelope version", () => {

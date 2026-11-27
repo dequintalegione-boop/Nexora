@@ -117,6 +117,67 @@ function validateTaskRecords(records: Record<string, unknown>[]): void {
         fail("Поле «" + field + "» задачи «" + task.title + "» должно быть массивом.")
       }
     }
+
+    const recurrence = task.recurrenceRule
+    if (recurrence !== undefined) {
+      if (!isRecord(recurrence)) fail("Правило повторения задачи «" + task.title + "» имеет неверный формат.")
+      if (
+        recurrence.frequency !== "daily" &&
+        recurrence.frequency !== "weekly" &&
+        recurrence.frequency !== "monthly" &&
+        recurrence.frequency !== "yearly"
+      ) {
+        fail("В правиле повторения задачи «" + task.title + "» указана неизвестная частота.")
+      }
+      if (!Number.isInteger(recurrence.interval) || (recurrence.interval as number) < 1) {
+        fail("Интервал повторения задачи «" + task.title + "» должен быть положительным целым числом.")
+      }
+      if (recurrence.count !== undefined && (!Number.isInteger(recurrence.count) || (recurrence.count as number) < 1)) {
+        fail("COUNT в правиле повторения задачи «" + task.title + "» должен быть положительным целым числом.")
+      }
+      if (recurrence.until !== undefined && (typeof recurrence.until !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(recurrence.until))) {
+        fail("UNTIL в правиле повторения задачи «" + task.title + "» должен иметь формат YYYY-MM-DD.")
+      }
+      for (const field of ["weekdays", "byMonthDay", "byMonth"]) {
+        const value = recurrence[field]
+        if (value !== undefined && (!Array.isArray(value) || !value.every((item) => Number.isInteger(item)))) {
+          fail("Поле «" + field + "» правила повторения задачи «" + task.title + "» должно быть массивом целых чисел.")
+        }
+      }
+      if (recurrence.weekdays !== undefined && !(recurrence.weekdays as number[]).every((day) => day >= 0 && day <= 6)) {
+        fail("Дни недели в правиле повторения задачи «" + task.title + "» должны быть от 0 до 6.")
+      }
+      if (recurrence.byMonth !== undefined && !(recurrence.byMonth as number[]).every((month) => month >= 1 && month <= 12)) {
+        fail("BYMONTH в правиле повторения задачи «" + task.title + "» должен содержать месяцы от 1 до 12.")
+      }
+      if (recurrence.byMonthDay !== undefined && !(recurrence.byMonthDay as number[]).every((day) => day !== 0 && Math.abs(day) <= 31)) {
+        fail("BYMONTHDAY в правиле повторения задачи «" + task.title + "» должен содержать дни от -31 до -1 или от 1 до 31.")
+      }
+      if (recurrence.byDay !== undefined) {
+        if (!Array.isArray(recurrence.byDay) || !recurrence.byDay.every((item) =>
+          isRecord(item) &&
+          Number.isInteger(item.weekday) &&
+          (item.weekday as number) >= 0 &&
+          (item.weekday as number) <= 6 &&
+          (item.ordinal === undefined ||
+            (Number.isInteger(item.ordinal) &&
+              (item.ordinal as number) !== 0 &&
+              Math.abs(item.ordinal as number) <= 5))
+        )) {
+          fail("BYDAY в правиле повторения задачи «" + task.title + "» заполнен некорректно.")
+        }
+      }
+      if (recurrence.weekStart !== undefined &&
+        (!Number.isInteger(recurrence.weekStart) || (recurrence.weekStart as number) < 0 || (recurrence.weekStart as number) > 6)) {
+        fail("WKST в правиле повторения задачи «" + task.title + "» должен быть от 0 до 6.")
+      }
+      if (recurrence.excludeDates !== undefined && (
+        !Array.isArray(recurrence.excludeDates) ||
+        !recurrence.excludeDates.every((date) => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date))
+      )) {
+        fail("EXDATE в правиле повторения задачи «" + task.title + "» должен быть массивом дат YYYY-MM-DD.")
+      }
+    }
   }
 }
 

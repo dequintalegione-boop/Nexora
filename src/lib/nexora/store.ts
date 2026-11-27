@@ -32,6 +32,14 @@ function nowISO(): string {
   return new Date().toISOString()
 }
 
+function localDateISO(date = new Date()): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-")
+}
+
 export function defaultSettings(): Settings {
   return {
     initialized: false,
@@ -174,6 +182,12 @@ export const useNexora = create<Store>()(
       addTask: (input) => {
         const id = nid("task")
         const now = nowISO()
+        const recurrenceRule = input.recurrenceRule ?? (
+          input.repeat ? { frequency: input.repeat, interval: 1 } : undefined
+        )
+        const recurrenceStartDate = recurrenceRule
+          ? input.recurrenceStartDate ?? input.occurrenceDate ?? input.scheduledDate ?? input.dueDate ?? input.startAt?.slice(0, 10) ?? localDateISO()
+          : input.recurrenceStartDate
         const task: Task = {
           id,
           createdAt: now,
@@ -193,7 +207,29 @@ export const useNexora = create<Store>()(
           projectIds: input.projectIds ?? (input.projectId ? [input.projectId] : undefined),
           parentId: input.parentId,
           dependsOn: input.dependsOn ?? [],
-          recurrenceRule: input.recurrenceRule,
+          repeat: input.repeat ?? (
+            recurrenceRule?.frequency === "daily" || recurrenceRule?.frequency === "weekly"
+              ? recurrenceRule.frequency
+              : undefined
+          ),
+          recurrenceRule,
+          recurrenceParentId: input.recurrenceParentId,
+          occurrenceDate: input.occurrenceDate,
+          occurrenceNumber: input.occurrenceNumber,
+          recurrenceStartDate,
+          recurrenceStartScheduledDate: recurrenceRule
+            ? input.recurrenceStartScheduledDate ?? input.scheduledDate
+            : input.recurrenceStartScheduledDate,
+          recurrenceStartDueDate: recurrenceRule
+            ? input.recurrenceStartDueDate ?? input.dueDate
+            : input.recurrenceStartDueDate,
+          recurrenceStartStartAt: recurrenceRule
+            ? input.recurrenceStartStartAt ?? input.startAt
+            : input.recurrenceStartStartAt,
+          recurrenceStartEndAt: recurrenceRule
+            ? input.recurrenceStartEndAt ?? input.endAt
+            : input.recurrenceStartEndAt,
+          skippedOccurrences: input.skippedOccurrences ?? [],
           reminders: input.reminders ?? [],
           links: input.links ?? [],
           contexts: input.contexts ?? [],
