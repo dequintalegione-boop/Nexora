@@ -174,13 +174,16 @@ export function updateRecurrenceSeriesTasks(
 
 /** Create a persisted, independently editable copy of one virtual series occurrence. */
 export function buildMaterializedTaskOccurrence(
-  occurrence: Task,
+  occurrence: Task & { virtualOccurrence?: boolean; recurrenceSeriesId?: string },
   id: string,
   now: string,
 ): Task | null {
   if (!occurrence.recurrenceParentId || !occurrence.occurrenceDate || !id.trim()) return null
+  const persistedOccurrence = { ...occurrence }
+  delete persistedOccurrence.virtualOccurrence
+  delete persistedOccurrence.recurrenceSeriesId
   return {
-    ...occurrence,
+    ...persistedOccurrence,
     id,
     createdAt: now,
     updatedAt: now,
