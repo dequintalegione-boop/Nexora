@@ -45,19 +45,15 @@ function sameValue(left: unknown, right: unknown): boolean {
  * domain events are published; event handlers can therefore read committed state.
  */
 export class TaskService {
-  private readonly repository: TaskRepository
-  private readonly eventBus: TaskEventBus
   private readonly now: () => string
   private readonly createId: (prefix: string) => string
   private readonly isDoneStatus: (status: TaskStatus) => boolean
 
   constructor(
-    repository: TaskRepository,
-    eventBus: TaskEventBus,
+    private readonly repository: TaskRepository,
+    private readonly eventBus: TaskEventBus,
     options: TaskServiceOptions = {},
   ) {
-    this.repository = repository
-    this.eventBus = eventBus
     this.now = options.now ?? (() => new Date().toISOString())
     this.createId = options.createId ?? createDefaultId
     this.isDoneStatus = options.isDoneStatus ?? ((status) => status === "done")
@@ -71,9 +67,8 @@ export class TaskService {
       return { nextTasks: [task, ...current], result: undefined }
     })
 
-    const storedTask = this.repository.getById(task.id) ?? task
-    this.publish("task.created", task.id, undefined, storedTask, context)
-    return storedTask
+    this.publish("task.created", task.id, undefined, task, context)
+    return task
   }
 
   update(id: string, patch: TaskServicePatch, context: TaskCommandContext = {}): Task | undefined {
@@ -108,30 +103,33 @@ export class TaskService {
   archive(id: string, context: TaskCommandContext = {}): boolean {
     const current = this.repository.getById(id)
     if (!current || current.archived) return false
+    const now = this.now()
     return Boolean(this.update(id, {
       archived: true,
-      archivedAt: this.now(),
-      history: [...(current.history ?? []), { at: this.now(), change: "Задача архивирована" }].slice(-100),
+      archivedAt: now,
+      history: [...(current.history ?? []), { at: now, change: "Задача архивирована" }].slice(-100),
     }, context))
   }
 
   restore(id: string, context: TaskCommandContext = {}): boolean {
     const current = this.repository.getById(id)
     if (!current || (!current.archived && !current.deletedAt)) return false
+    const now = this.now()
     return Boolean(this.update(id, {
       archived: false,
       archivedAt: undefined,
       deletedAt: undefined,
-      history: [...(current.history ?? []), { at: this.now(), change: "Задача восстановлена" }].slice(-100),
+      history: [...(current.history ?? []), { at: now, change: "Задача восстановлена" }].slice(-100),
     }, context))
   }
 
   moveToTrash(id: string, context: TaskCommandContext = {}): boolean {
     const current = this.repository.getById(id)
     if (!current || current.deletedAt) return false
+    const now = this.now()
     return Boolean(this.update(id, {
-      deletedAt: this.now(),
-      history: [...(current.history ?? []), { at: this.now(), change: "Задача перемещена в корзину" }].slice(-100),
+      deletedAt: now,
+      history: [...(current.history ?? []), { at: now, change: "Задача перемещена в корзину" }].slice(-100),
     }, context))
   }
 
@@ -226,6 +224,37 @@ export class TaskService {
     ))
   }
 
+  /**
+   * Publish a change that was committed by an outer atomic profile transaction.
+   * This is used when the store must coordinate recurrence and automation side effects
+   * in the same write before observers are notified.
+   */
+  publishCommittedChange(
+    before: Task,
+    after: Task,
+    context: TaskCommandContext = {},
+    occurredAt = this.now(),
+  ): string {
+    const correlationId = context.correlationId ?? this.createId("corr")
+    this.publishChanges(before, after, { ...context, correlationId }, occurredAt)
+    return correlationId
+  }
+
+  setStatus(id: string, status: TaskStatus, context: TaskCommandContext = {}): Task | undefined {
+    const current = this.repository.getById(id)
+    if (!current || current.status === status) return current
+    const now = this.now()
+    const isDone = this.isDoneStatus(status)
+    return this.update(id, {
+      status,
+      completedAt: isDone ? now : undefined,
+      history: [
+        ...(current.history ?? []),
+        { at: now, change: "Статус → " + status },
+      ].slice(-100),
+    }, context)
+  }
+
   private publishChanges(
     before: Task,
     after: Task,
@@ -248,6 +277,7 @@ export class TaskService {
     }
 
     publish("task.updated")
+    let moved = false
 
     if (before.status !== after.status) {
       publish("task.status.changed")
@@ -264,7 +294,7 @@ export class TaskService {
     }
     if (before.scheduledDate !== after.scheduledDate || before.startAt !== after.startAt || before.endAt !== after.endAt) {
       publish("task.scheduled.changed")
-      publish("task.moved")
+      moved = true
     }
     if (before.dueDate !== after.dueDate) publish("task.due.changed")
     if (before.priority !== after.priority) publish("task.priority.changed")
@@ -275,6 +305,7 @@ export class TaskService {
       !sameValue(before.projectIds, after.projectIds)
     ) {
       publish("task.projects.changed")
+      moved = true
     }
     if (!sameValue(before.reminders, after.reminders)) publish("task.reminders.changed")
     if (!sameValue(before.dependsOn, after.dependsOn)) publish("task.dependencies.changed")
@@ -285,7 +316,8 @@ export class TaskService {
     ) {
       publish("task.recurrence.changed")
     }
-    if (before.parentId !== after.parentId) publish("task.moved")
+    if (before.parentId !== after.parentId) moved = true
+    if (moved) publish("task.moved")
   }
 
   private publish(

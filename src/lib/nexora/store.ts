@@ -262,23 +262,21 @@ export const useNexora = create<Store>()(
           contexts: input.contexts ?? [],
           history: [{ at: now, change: "Задача создана" }],
         }
-        const repository = createTaskRepository(
-          () => get().tasks,
-          (tasks) => {
-            const event = { type: "task.created" as const, taskId: id, eventId: nid("event"), occurredAt: now }
-            const result = runTaskAutomations(tasks, get().automationRules ?? [], event)
-            set({
-              tasks: result.tasks,
-              automationRuns: [...result.runs, ...(get().automationRuns ?? [])].slice(0, 200),
-            })
-          },
-        )
-        const service = createTaskService(repository, taskEventBus, {
-          now: nowISO,
-          createId: (prefix) => nid(prefix),
-          isDoneStatus: (status) => isDoneStatus(status, get().settings),
+        set((s) => {
+          const event = { type: "task.created" as const, taskId: id, eventId: nid("event"), occurredAt: now }
+          const result = runTaskAutomations([task, ...s.tasks], s.automationRules ?? [], event)
+          return { tasks: result.tasks, automationRuns: [...result.runs, ...(s.automationRuns ?? [])].slice(0, 200) }
         })
-        service.create(task, { source: "ui", correlationId: id })
+        const created = get().tasks.find((task) => task.id === id)
+        if (created) {
+          publishStoreTaskEvent({
+            type: "task.created",
+            entityId: id,
+            after: created,
+            source: "ui",
+            correlationId: id,
+          })
+        }
         return id
       },
 
@@ -295,6 +293,7 @@ export const useNexora = create<Store>()(
         const before = get().tasks.find((task) => task.id === id)
         if (!before || before.status === status) return
         const now = nowISO()
+        let createdOccurrenceId: string | undefined
 
         set((s) => {
           const current = s.tasks.find((task) => task.id === id)
@@ -324,7 +323,10 @@ export const useNexora = create<Store>()(
                   (task.recurrenceParentId ?? task.id) === seriesId &&
                   task.occurrenceDate === next.occurrenceDate
               )
-              if (!alreadyCreated) nextTasks.unshift({ ...next, id: nid("task") })
+              if (!alreadyCreated) {
+                createdOccurrenceId = nid("task")
+                nextTasks.unshift({ ...next, id: createdOccurrenceId })
+              }
             }
           }
 
@@ -348,28 +350,37 @@ export const useNexora = create<Store>()(
 
         const after = get().tasks.find((task) => task.id === id)
         if (!after) return
-        const correlationId = nid("corr")
-        publishStoreTaskEvent({ type: "task.updated", entityId: id, before, after, source: "ui", correlationId })
-        if (before.status !== after.status) {
-          publishStoreTaskEvent({ type: "task.status.changed", entityId: id, before, after, source: "ui", correlationId })
+        const service = createStoreTaskService(
+          () => get().tasks,
+          (tasks) => set({ tasks }),
+          (value) => isDoneStatus(value, get().settings),
+        )
+        const correlationId = service.publishCommittedChange(before, after, { source: "ui" }, now)
+        if (createdOccurrenceId) {
+          const createdOccurrence = get().tasks.find((task) => task.id === createdOccurrenceId)
+          if (createdOccurrence) {
+            publishStoreTaskEvent({
+              type: "task.created",
+              entityId: createdOccurrenceId,
+              after: createdOccurrence,
+              source: "recurrence",
+              correlationId,
+              metadata: { seriesId: before.recurrenceParentId ?? before.id, occurrenceDate: createdOccurrence.occurrenceDate ?? null },
+            })
+          }
         }
         const wasDone = isDoneStatus(before.status, get().settings)
         const isDone = isDoneStatus(after.status, get().settings)
-        if (!wasDone && isDone) {
-          publishStoreTaskEvent({ type: "task.completed", entityId: id, before, after, source: "ui", correlationId })
-          if (before.recurrenceRule || before.repeat) {
-            publishStoreTaskEvent({
-              type: "recurring.instance.completed",
-              entityId: id,
-              before,
-              after,
-              source: "recurrence",
-              correlationId,
-              metadata: { occurrenceDate: before.occurrenceDate ?? before.scheduledDate ?? null },
-            })
-          }
-        } else if (wasDone && !isDone) {
-          publishStoreTaskEvent({ type: "task.uncompleted", entityId: id, before, after, source: "ui", correlationId })
+        if (!wasDone && isDone && (before.recurrenceRule || before.repeat)) {
+          publishStoreTaskEvent({
+            type: "recurring.instance.completed",
+            entityId: id,
+            before,
+            after,
+            source: "recurrence",
+            correlationId,
+            metadata: { occurrenceDate: before.occurrenceDate ?? before.scheduledDate ?? null },
+          })
         }
       },
 
@@ -407,6 +418,7 @@ export const useNexora = create<Store>()(
           before.occurrenceDate ?? before.scheduledDate ?? before.dueDate ?? now.slice(0, 10)
         const skippedOccurrences = [...new Set([...(before.skippedOccurrences ?? []), occurrenceKey])]
         const next = buildNextTaskOccurrence({ ...before, skippedOccurrences }, now)
+        let createdOccurrenceId: string | undefined
 
         set((state) => {
           const nextTasks = state.tasks.map((task) =>
@@ -430,7 +442,10 @@ export const useNexora = create<Store>()(
               (task) =>
                 (task.recurrenceParentId ?? task.id) === seriesId && task.occurrenceDate === next.occurrenceDate
             )
-            if (!exists) nextTasks.unshift({ ...next, id: nid("task") })
+            if (!exists) {
+              createdOccurrenceId = nid("task")
+              nextTasks.unshift({ ...next, id: createdOccurrenceId })
+            }
           }
           return { tasks: nextTasks }
         })
@@ -438,22 +453,25 @@ export const useNexora = create<Store>()(
         const after = get().tasks.find((task) => task.id === id)
         if (after) {
           const correlationId = nid("corr")
-          publishStoreTaskEvent({
-            type: "task.updated",
-            entityId: id,
-            before,
-            after,
-            source: "recurrence",
-            correlationId,
-          })
-          publishStoreTaskEvent({
-            type: "task.status.changed",
-            entityId: id,
-            before,
-            after,
-            source: "recurrence",
-            correlationId,
-          })
+          if (createdOccurrenceId) {
+            const createdOccurrence = get().tasks.find((task) => task.id === createdOccurrenceId)
+            if (createdOccurrence) {
+              publishStoreTaskEvent({
+                type: "task.created",
+                entityId: createdOccurrenceId,
+                after: createdOccurrence,
+                source: "recurrence",
+                correlationId,
+                metadata: { seriesId: before.recurrenceParentId ?? before.id, occurrenceDate: createdOccurrence.occurrenceDate ?? null },
+              })
+            }
+          }
+          const service = createStoreTaskService(
+            () => get().tasks,
+            (tasks) => set({ tasks }),
+            (value) => isDoneStatus(value, get().settings),
+          )
+          service.publishCommittedChange(before, after, { source: "recurrence", correlationId }, now)
           publishStoreTaskEvent({
             type: "recurring.instance.skipped",
             entityId: id,

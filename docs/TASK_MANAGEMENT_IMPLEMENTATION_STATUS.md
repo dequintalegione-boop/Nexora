@@ -50,7 +50,7 @@
 
 ## Автоматические тесты
 
-Покрыты: TaskRepository / TaskService / TaskEvents (repository ID validation, post-commit events, dedupe, nested dispatch, handler isolation, CRUD lifecycle, relation integrity), шаблоны, автоматизации (AND/OR, `task.due`, `task.due_soon`), миграции схемы, каталог статусов (в т.ч. select options и fallback), напоминания, фильтры, Kanban, календарь, быстрый ввод (weekdays/estimate/project/status/custom status id), повторения, Pomodoro (длительности и последовательность циклов), корректировка time sessions, JSON-бэкап (новый и старый формат, round-trip UI и данных, отказ на некорректном/дублированном/будущем формате).
+Покрыты: TaskRepository / TaskService / TaskEvents (repository ID validation, post-commit events, dedupe, nested dispatch, handler isolation, safe snapshots, custom completed statuses, CRUD lifecycle, relation integrity), шаблоны, автоматизации (AND/OR, `task.due`, `task.due_soon`), миграции схемы, каталог статусов (в т.ч. select options и fallback), напоминания, фильтры, Kanban, календарь, быстрый ввод (weekdays/estimate/project/status/custom status id), повторения, Pomodoro (длительности и последовательность циклов), корректировка time sessions, JSON-бэкап (новый и старый формат, round-trip UI и данных, отказ на некорректном/дублированном/будущем формате).
 
 CI: unit-тесты, TypeScript typecheck, production build.
 
@@ -58,7 +58,7 @@ CI: unit-тесты, TypeScript typecheck, production build.
 
 - **Первый слой TaskRepository / TaskService / TaskEvents:**
   - `TaskRepository` — адаптер поверх текущего массива задач в профиле Zustand; отдельное хранилище не создаётся, на границе записи проверяется уникальность ID;
-  - `TaskService` централизует создание, обновление, архивирование, восстановление, перенос в корзину, окончательное удаление, смену родителя и зависимостей; store использует сервис для редактирования и перечисленных CRUD/relationship-команд;
+  - `TaskService` предоставляет команды создания, обновления, статуса, архивирования, восстановления, переноса в корзину, окончательного удаления, смены родителя и зависимостей; store использует сервис для обновлений, архивирования/восстановления, корзины, удаления и управления связями; создание и смена статуса пока остаются в store-оркестрации из-за атомарного запуска текущих автоматизаций/повторений;
   - `TaskEvents` — типизированная локальная шина с eventId, occurredAt, entityId, before/after, source, correlationId и безопасными метаданными; события CRUD публикуются после repository commit;
   - дедупликация по eventId (ограниченное окно 5 000 событий), очередь вложенных публикаций и изоляция ошибок подписчиков;
   - создание, смена статуса, completion и skip повторения сохраняют текущую атомарную логику автоматизаций/повторений в store и публикуют соответствующие события после записи.
