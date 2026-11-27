@@ -9,6 +9,8 @@ import {
   getTaskPriorityDefinitions,
   defaultTaskStatuses,
   defaultTaskPriorities,
+  getFallbackStatusId,
+  getFallbackPriorityId,
 } from "@/lib/nexora/copy"
 import type { StatusDefinition, PriorityDefinition } from "@/lib/nexora/types"
 import { Button, Card, Input, Select } from "./ui"
@@ -28,6 +30,8 @@ function moveItem<T extends { order: number }>(items: T[], index: number, dir: -
 function StatusCatalogEditor() {
   const settings = useNexora((s) => s.settings)
   const updateSettings = useNexora((s) => s.updateSettings)
+  const tasks = useNexora((s) => s.tasks)
+  const setTaskStatus = useNexora((s) => s.setTaskStatus)
   const statuses = getTaskStatusDefinitions(settings)
   const [newLabel, setNewLabel] = useState("")
   const [newCategory, setNewCategory] = useState<StatusDefinition["category"]>("open")
@@ -37,6 +41,17 @@ function StatusCatalogEditor() {
       taskStatuses: next.map((s, order) => ({ ...s, order })),
       taskStatusLabels: Object.fromEntries(next.map((s) => [s.id, s.label])),
     })
+  }
+
+  const removeStatus = (id: string) => {
+    const affected = tasks.filter((t) => t.status === id && !t.deletedAt)
+    if (affected.length > 0) {
+      const fallback = getFallbackStatusId(settings, id)
+      for (const task of affected) {
+        setTaskStatus(task.id, fallback as TaskStatus)
+      }
+    }
+    commit(statuses.filter((s) => s.id !== id))
   }
 
   const addCustom = () => {
@@ -95,7 +110,8 @@ function StatusCatalogEditor() {
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => commit(statuses.filter((s) => s.id !== status.id))}
+              onClick={() => removeStatus(status.id)}
+              title="Задачи с этим статусом будут переведены на запасной статус"
             >
               Удалить
             </Button>
@@ -137,6 +153,8 @@ function StatusCatalogEditor() {
 function PriorityCatalogEditor() {
   const settings = useNexora((s) => s.settings)
   const updateSettings = useNexora((s) => s.updateSettings)
+  const tasks = useNexora((s) => s.tasks)
+  const updateTask = useNexora((s) => s.updateTask)
   const priorities = getTaskPriorityDefinitions(settings)
   const [newLabel, setNewLabel] = useState("")
 
@@ -145,6 +163,17 @@ function PriorityCatalogEditor() {
       taskPriorities: next.map((p, order) => ({ ...p, order })),
       taskPriorityLabels: Object.fromEntries(next.map((p) => [p.id, p.label])),
     })
+  }
+
+  const removePriority = (id: string) => {
+    const affected = tasks.filter((t) => t.priority === id && !t.deletedAt)
+    if (affected.length > 0) {
+      const fallback = getFallbackPriorityId(settings, id)
+      for (const task of affected) {
+        updateTask(task.id, { priority: fallback as Priority })
+      }
+    }
+    commit(priorities.filter((p) => p.id !== id))
   }
 
   const addCustom = () => {
@@ -187,7 +216,8 @@ function PriorityCatalogEditor() {
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => commit(priorities.filter((p) => p.id !== priority.id))}
+              onClick={() => removePriority(priority.id)}
+              title="Задачи с этим приоритетом будут переведены на запасной приоритет"
             >
               Удалить
             </Button>
