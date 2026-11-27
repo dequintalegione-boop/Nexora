@@ -12,7 +12,6 @@ import { TaskFilterBuilder } from "./task-filter-builder"
 import { getKanbanColumns, getKanbanDropPatch, getKanbanTaskColumnIds } from "@/lib/nexora/kanban"
 import { buildTaskInputFromTemplate, createTaskTemplateFromTask } from "@/lib/nexora/task-templates"
 import type { KanbanGroupBy } from "@/lib/nexora/kanban"
-import { buildTaskInputFromTemplate, createTaskTemplateFromTask } from "@/lib/nexora/task-templates"
 
 export function TasksPage() {
   const tasks = useNexora((s) => s.tasks)
