@@ -11,6 +11,7 @@ import { createTaskFilterGroup, matchesTaskFilterGroup, type TaskFilterGroup } f
 import { TaskFilterBuilder } from "./task-filter-builder"
 import { getKanbanColumns, getKanbanDropPatch, getKanbanTaskColumnIds } from "@/lib/nexora/kanban"
 import type { KanbanGroupBy } from "@/lib/nexora/kanban"
+import { buildTaskInputFromTemplate, createTaskTemplateFromTask } from "@/lib/nexora/task-templates"
 
 export function TasksPage() {
   const tasks = useNexora((s) => s.tasks)
@@ -151,24 +152,13 @@ export function TasksPage() {
     const task = selectedTasks[0]
     const name = templateName.trim()
     if (!task || !name) return
-    saveTaskTemplate({
-      name, title: task.title, description: task.description, priority: task.priority,
-      estimatedMinutes: task.estimatedMinutes, projectId: task.projectId,
-      tags: task.tags ? [...task.tags] : [], contexts: task.contexts ? [...task.contexts] : [],
-      links: task.links ? task.links.map((link) => ({ ...link })) : [],
-    })
+    saveTaskTemplate(createTaskTemplateFromTask(task, name))
     setTemplateName("")
   }
   const createFromTemplate = () => {
     const template = taskTemplates.find((item) => item.id === templateId)
     if (!template) return
-    const id = addTask({
-      title: template.title, description: template.description, priority: template.priority,
-      estimatedMinutes: template.estimatedMinutes, projectId: template.projectId,
-      projectIds: template.projectId ? [template.projectId] : [],
-      tags: template.tags ? [...template.tags] : [], contexts: template.contexts ? [...template.contexts] : [],
-      links: template.links ? template.links.map((link) => ({ ...link })) : [], status: "inbox",
-    })
+    const id = addTask(buildTaskInputFromTemplate(template))
     setTaskId(id)
     setTemplateId("")
   }
