@@ -29,30 +29,46 @@ export function useCountUp(target: number, duration = 1100): number {
     const tick = (now: number) => {
       const t = Math.min(1, (now - start) / duration)
       const next = from + (safe - from) * easeOutExpo(t)
+      fromRef.current = next
       setValue(next)
       if (t < 1) raf = requestAnimationFrame(tick)
-      else fromRef.current = safe
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
   }, [safe, duration])
 
-  return Math.round(value)
+  return value
 }
 
-/** Появление элемента снизу с лёгким fade (для карточек дашборда). */
-export function useEnterAnimation(delayMs = 0): React.CSSProperties {
-  const [shown, setShown] = useState(prefersReducedMotion())
+/** Включает класс .is-visible у элементов [data-reveal] внутри контейнера, когда они попадают в экран. */
+export function useReveal<T extends HTMLElement>() {
+  const ref = useRef<T>(null)
+
   useEffect(() => {
-    if (prefersReducedMotion()) return
-    const id = window.setTimeout(() => setShown(true), delayMs)
-    return () => window.clearTimeout(id)
-  }, [delayMs])
-  return {
-    opacity: shown ? 1 : 0,
-    transform: shown ? "translateY(0)" : "translateY(10px)",
-    transition: prefersReducedMotion()
-      ? undefined
-      : `opacity 420ms cubic-bezier(0.16, 1, 0.3, 1) ${delayMs}ms, transform 420ms cubic-bezier(0.16, 1, 0.3, 1) ${delayMs}ms`,
-  }
+    const root = ref.current
+    if (!root) return
+    const items = Array.from(root.querySelectorAll<HTMLElement>("[data-reveal]"))
+    if (typeof IntersectionObserver === "undefined" || prefersReducedMotion()) {
+      items.forEach((el) => el.classList.add("is-visible"))
+      return
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible")
+            io.unobserve(entry.target)
+          }
+        }
+      },
+      { threshold: 0.12 },
+    )
+    items.forEach((el, i) => {
+      el.style.setProperty("--reveal-delay", `${Math.min(i, 8) * 60}ms`)
+      io.observe(el)
+    })
+    return () => io.disconnect()
+  })
+
+  return ref
 }
