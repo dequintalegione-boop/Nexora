@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
-import type { Priority, TaskStatus } from "./types"\nimport type { TaskFilterGroup } from "./task-filters"
+import type { Priority, TaskStatus } from "./types"
+import type { TaskFilterGroup } from "./task-filters"
 
 export type TaskTableColumn =
   | "title"
