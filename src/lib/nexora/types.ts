@@ -78,64 +78,50 @@ export interface Task {
   actualMinutes?: number
   notes?: string
   repeat?: Repeat
-  repeatOf?: ID
   recurrenceRule?: RecurrenceRule
   recurrenceParentId?: ID
   occurrenceDate?: string
-  occurrenceNumber?: number
   skippedOccurrences?: string[]
-  recurrenceStartDate?: string
-  recurrenceStartScheduledDate?: string
-  recurrenceStartDueDate?: string
+  tags?: string[]
+  contexts?: string[]
   reminders?: TaskReminder[]
   links?: TaskLink[]
-  contexts?: string[]
-  customFields?: Record<string, string | number | boolean | null>
   history?: HistoryNote[]
-  tags?: string[]
-}
-
-export interface Direction {
-  id: ID
-  createdAt: string
-  updatedAt: string
-  archived?: boolean
-  title: string
-  description?: string
-  color: DirectionColor
-  order: number
 }
 
 export interface Project {
   id: ID
   createdAt: string
   updatedAt: string
-  archived?: boolean
   title: string
-  description?: string
-  directionId?: string
   status: ProjectStatus
   priority: Priority
-  startDate?: string
-  dueDate?: string
-  notes?: string
-  progress?: number
+  directionId?: string
+  description?: string
+  archived?: boolean
+}
+
+export interface Direction {
+  id: ID
+  createdAt: string
+  updatedAt: string
+  title: string
+  color: DirectionColor
+  order: number
+  description?: string
 }
 
 export interface Habit {
   id: ID
   createdAt: string
   updatedAt: string
-  archived?: boolean
   title: string
-  icon?: string
   measurementType: Measurement
   unit?: string
   targetValue?: number
-  schedule: { days: number[]; time?: string }
+  schedule: { days: number[] }
   active: boolean
-  startDate?: string
-  endDate?: string
+  icon?: string
 }
 
 export interface HabitLog {
@@ -149,13 +135,6 @@ export interface HabitLog {
   skipReason?: string
 }
 
-export interface Reflection {
-  gratitude?: string
-  wins?: string
-  best?: string
-  challenges?: string
-}
-
 export interface DailyEntry {
   id: ID
   createdAt: string
@@ -163,23 +142,21 @@ export interface DailyEntry {
   date: string
   mood?: number
   energy?: number
-  focus?: string
-  freeThoughts?: string
-  reflection?: Reflection
-  tomorrowFocus?: string
+  notes?: string
+  wins?: string
+  lessons?: string
 }
 
 export interface Goal {
   id: ID
   createdAt: string
   updatedAt: string
-  archived?: boolean
   title: string
-  description?: string
   horizon: Horizon
   status: GoalStatus
-  targetDate?: string
   progress: number
+  description?: string
+  targetDate?: string
   projectIds?: ID[]
   notes?: string
 }
@@ -190,28 +167,23 @@ export interface TimeSession {
   updatedAt: string
   kind: SessionKind
   startedAt: string
-  endedAt?: string
-  taskId?: string
+  endedAt: string
+  taskId?: ID
   title?: string
-  durationMinutes?: number
+  durationMinutes: number
 }
 
 export interface ActiveTimer {
   kind: SessionKind
-  /** Start of the current running segment. Reset when a paused timer resumes. */
   startedAt: string
-  /** Original start time of the whole session, preserved across pauses. */
   sessionStartedAt?: string
-  taskId?: string
+  taskId?: ID
   label?: string
-  pausedAt?: string
   accumulatedMs?: number
+  pausedAt?: string
 }
 
 export interface Settings {
-  taskStatusLabels?: Partial<Record<TaskStatus, string>>
-  taskPriorityLabels?: Partial<Record<Priority, string>>
-  notificationsEnabled?: boolean
   initialized: boolean
   theme: ThemeMode
   accent: string
@@ -219,9 +191,14 @@ export interface Settings {
   weekStartsOn: 0 | 1
   widgetOrder: string[]
   hiddenWidgets: string[]
+  notificationsEnabled: boolean
+  taskStatusLabels?: Partial<Record<TaskStatus, string>>
+  taskPriorityLabels?: Partial<Record<Priority, string>>
 }
 
 export interface Persisted {
+  /** Schema version of the persisted profile. Missing/undefined is treated as 0. */
+  schemaVersion?: number
   directions: Direction[]
   projects: Project[]
   tasks: Task[]
