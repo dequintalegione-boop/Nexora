@@ -79,6 +79,7 @@ export interface Task {
   recurrenceParentId?: ID
   occurrenceDate?: string
   occurrenceNumber?: number
+  skippedOccurrences?: string[]
   recurrenceStartDate?: string
   recurrenceStartScheduledDate?: string
   recurrenceStartDueDate?: string
