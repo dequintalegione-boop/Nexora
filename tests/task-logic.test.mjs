@@ -426,6 +426,8 @@ test("virtual occurrence materialization keeps its date identity but removes ser
     endAt: "2026-01-08T10:30:00.000Z",
     recurrenceRule: undefined,
     repeat: undefined,
+    virtualOccurrence: true,
+    recurrenceSeriesId: "series",
   })
   const materialized = buildMaterializedTaskOccurrence(
     virtual,
@@ -442,6 +444,8 @@ test("virtual occurrence materialization keeps its date identity but removes ser
   assert.equal(materialized?.recurrenceRule, undefined)
   assert.equal(materialized?.repeat, undefined)
   assert.equal(materialized?.recurrenceOverride, true)
+  assert.equal("virtualOccurrence" in (materialized ?? {}), false)
+  assert.equal("recurrenceSeriesId" in (materialized ?? {}), false)
   assert.equal(materialized?.createdAt, "2026-01-07T10:00:00.000Z")
   assert.match(materialized?.history?.at(-1)?.change ?? "", /отделён от серии/)
   assert.equal(buildMaterializedTaskOccurrence(task("ordinary"), "new-id", "2026-01-07T10:00:00.000Z"), null)
