@@ -85,6 +85,12 @@ function shiftOccurrenceDate(date: string, frequency: "daily" | "weekly" | "mont
   return value.toISOString().slice(0, 10)
 }
 
+function shiftCalendarDays(date: string, days: number): string {
+  const [year, month, day] = date.split("-").map(Number)
+  const value = new Date(Date.UTC(year, month - 1, day + days, 12))
+  return value.toISOString().slice(0, 10)
+}
+
 function getWeeklyOccurrenceDate(date: string, interval: number, weekdays: number[], occurrenceOffset: number): string {
   const [year, month, day] = date.split("-").map(Number)
   const base = new Date(Date.UTC(year, month - 1, day, 12))
@@ -123,8 +129,16 @@ export function buildNextTaskOccurrence(task: Task, now: string): Omit<Task, "id
 
   const scheduledAnchor = task.recurrenceStartScheduledDate ?? task.scheduledDate
   const dueAnchor = task.recurrenceStartDueDate ?? task.dueDate
+  const dayOffset = Math.round(
+    (new Date(nextDate + "T12:00:00.000Z").getTime() -
+      new Date(baseDate + "T12:00:00.000Z").getTime()) / 86400000
+  )
   const shiftField = (date?: string) =>
-    date ? shiftOccurrenceDate(date, rule.frequency, rule.interval * (occurrenceNumber - 1)) : undefined
+    date
+      ? weeklyDays
+        ? shiftCalendarDays(date, dayOffset)
+        : shiftOccurrenceDate(date, rule.frequency, rule.interval * (occurrenceNumber - 1))
+      : undefined
 
   return {
     ...task,
