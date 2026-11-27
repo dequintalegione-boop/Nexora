@@ -32,11 +32,11 @@
 - Расширенный конструктор фильтров AND/OR; календарь (месяц, неделя, повестка 14 дней); повторения daily/weekly/monthly/yearly.
 - **Единый active-каталог в пикерах:** `getStatusSelectOptions` / `getPrioritySelectOptions` (active + текущее значение, если скрыто); применены в диалоге задачи, списке/таблице, массовых операциях, фильтрах и автоматизациях.
 - **Политика удаления custom-статуса/приоритета:** задачи с удаляемым id переводятся на fallback (`getFallbackStatusId` / `getFallbackPriorityId`: inbox / first open / first; none / first visible).
-- **Расширенный NLP быстрого ввода:** дни недели, именованные даты, оценка, `+проект`, `*статус`; проводка в quick-add (`estimatedMinutes` / `projectId` / `status`); **live-чипы** распознанных полей под полем ввода; unit-тесты.
+- **Расширенный NLP быстрого ввода:** дни недели, именованные даты, оценка, `+проект`, `*статус` (в т.ч. custom id); проводка в quick-add; **live-чипы** распознанных полей; **автодополнение** `@`/`#`/`+`/`!`/`*` (↑↓ Enter/Tab Esc); unit-тесты.
 
 ## Автоматические тесты
 
-Покрыты: шаблоны, автоматизации (AND/OR, `task.due`, `task.due_soon`), миграции схемы, каталог статусов (в т.ч. select options и fallback), напоминания, фильтры, Kanban, календарь, быстрый ввод (weekdays/estimate/project/status), повторения.
+Покрыты: шаблоны, автоматизации (AND/OR, `task.due`, `task.due_soon`), миграции схемы, каталог статусов (в т.ч. select options и fallback), напоминания, фильтры, Kanban, календарь, быстрый ввод (weekdays/estimate/project/status/custom status id), повторения.
 
 CI: unit-тесты, TypeScript typecheck, production build.
 
@@ -49,7 +49,6 @@ CI: unit-тесты, TypeScript typecheck, production build.
 
 ## Ещё предстоит
 
-- Автодополнение `@` / `#` / `+` / `!` / `*` при быстром вводе (распознанные поля уже видны через live-чипы).
 - Web Push / фоновые уведомления.
 - Расширенные шаблоны (категории, бэкап, серии).
 - Полноценный импорт/экспорт с round-trip тестами.
