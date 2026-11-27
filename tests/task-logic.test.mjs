@@ -2,10 +2,12 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import {
   buildNextTaskOccurrence,
+  buildMaterializedTaskOccurrence,
   canAddTaskDependency,
   canSetTaskParent,
   getDependencyState,
   getTaskChildren,
+  skipRecurrenceOccurrenceTask,
   updateRecurrenceSeriesTasks,
 } from "../src/lib/nexora/task-logic.ts"
 import {
@@ -405,4 +407,80 @@ test("calendar expansion returns virtual dates without materializing persisted t
   assert.equal(expanded.find((item) => item.occurrenceDate === "2026-01-05")?.task.id, "series::2026-01-05")
   assert.equal(expanded.find((item) => item.occurrenceDate === "2026-01-04")?.task.startAt, "2026-01-04T09:00:00.000Z")
   assert.equal(expanded.find((item) => item.occurrenceDate === "2026-01-04")?.task.endAt, "2026-01-04T10:00:00.000Z")
+})
+
+
+test("virtual occurrence materialization keeps its date identity but removes series rules", () => {
+  const virtual = task("series::2026-01-08", {
+    status: "planned",
+    recurrenceParentId: "series",
+    occurrenceDate: "2026-01-08",
+    occurrenceNumber: 4,
+    recurrenceStartDate: "2026-01-05",
+    recurrenceStartScheduledDate: "2026-01-05",
+    scheduledDate: "2026-01-08",
+    startAt: "2026-01-08T09:00:00.000Z",
+    endAt: "2026-01-08T10:30:00.000Z",
+    recurrenceRule: undefined,
+    repeat: undefined,
+  })
+  const materialized = buildMaterializedTaskOccurrence(
+    virtual,
+    "task-instance-4",
+    "2026-01-07T10:00:00.000Z",
+  )
+
+  assert.equal(materialized?.id, "task-instance-4")
+  assert.equal(materialized?.recurrenceParentId, "series")
+  assert.equal(materialized?.occurrenceDate, "2026-01-08")
+  assert.equal(materialized?.occurrenceNumber, 4)
+  assert.equal(materialized?.scheduledDate, "2026-01-08")
+  assert.equal(materialized?.startAt, "2026-01-08T09:00:00.000Z")
+  assert.equal(materialized?.recurrenceRule, undefined)
+  assert.equal(materialized?.repeat, undefined)
+  assert.equal(materialized?.createdAt, "2026-01-07T10:00:00.000Z")
+  assert.match(materialized?.history?.at(-1)?.change ?? "", /отделён от серии/)
+  assert.equal(buildMaterializedTaskOccurrence(task("ordinary"), "new-id", "2026-01-07T10:00:00.000Z"), null)
+})
+
+test("skipping a virtual occurrence excludes only that date and leaves the series active", () => {
+  const root = task("series", {
+    status: "in_progress",
+    occurrenceDate: "2026-01-05",
+    recurrenceStartDate: "2026-01-05",
+    recurrenceRule: { frequency: "daily", interval: 1, count: 5 },
+  })
+  const future = task("saved-future", {
+    recurrenceParentId: "series",
+    occurrenceDate: "2026-01-07",
+    occurrenceNumber: 3,
+    scheduledDate: "2026-01-07",
+  })
+  const other = task("unrelated")
+  const skipped = skipRecurrenceOccurrenceTask(
+    [root, future, other],
+    "series",
+    "2026-01-06",
+    "2026-01-05T12:00:00.000Z",
+  )
+
+  assert.equal(skipped.updatedCount, 1)
+  assert.equal(skipped.tasks.find((item) => item.id === "series")?.status, "in_progress")
+  assert.deepEqual(skipped.tasks.find((item) => item.id === "series")?.skippedOccurrences, ["2026-01-06"])
+  assert.equal(skipped.tasks.find((item) => item.id === "saved-future"), future)
+  assert.equal(skipped.tasks.find((item) => item.id === "unrelated"), other)
+  assert.deepEqual(
+    getRecurrenceOccurrences(
+      root.recurrenceRule,
+      "2026-01-05",
+      "2026-01-05",
+      "2026-01-09",
+      skipped.tasks.find((item) => item.id === "series")?.skippedOccurrences ?? [],
+    ).map((item) => item.date),
+    ["2026-01-05", "2026-01-07", "2026-01-08", "2026-01-09"],
+  )
+  assert.equal(
+    skipRecurrenceOccurrenceTask(skipped.tasks, "series", "2026-01-06", "2026-01-05T13:00:00.000Z").updatedCount,
+    0,
+  )
 })
