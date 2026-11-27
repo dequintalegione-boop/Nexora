@@ -539,6 +539,11 @@ export function CalendarPage() {
     setSelectedSlot(null)
     const date = parseISODate(selected)
     setCursor({ year: date.getFullYear(), month: date.getMonth() })
+    if (nextView === "agenda") {
+      window.requestAnimationFrame(() => {
+        if (agendaScrollRef.current) agendaScrollRef.current.scrollTop = 0
+      })
+    }
   }
 
   const loadPreviousAgendaDays = () => {
