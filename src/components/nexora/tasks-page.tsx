@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import { useNexora } from "@/lib/nexora/store"
 import { DEFAULT_TASK_TABLE_COLUMNS, TASK_TABLE_COLUMN_LABELS, useUI, type TaskTableColumn } from "@/lib/nexora/ui-store"
 import {
@@ -11,6 +11,7 @@ import {
 import { addDays, isoDate } from "@/lib/nexora/dates"
 import type { TaskStatus, Priority } from "@/lib/nexora/types"
 import { Button, Card, Input, Select, Badge } from "./ui"
+import { QuickTaskInput, buildQuickTaskSuggestions } from "./quick-task-input"
 import { getDependencyState, getTaskChildren } from "@/lib/nexora/task-logic"
 import { parseQuickTaskInput } from "@/lib/nexora/quick-task"
 import { createTaskFilterGroup, matchesTaskFilterGroup, type TaskFilterGroup } from "@/lib/nexora/task-filters"
@@ -158,6 +159,22 @@ export function TasksPage() {
     setTemplateId("")
   }
 
+  const quickSuggestions = useMemo(() => {
+    const tagSet = new Set<string>()
+    const ctxSet = new Set<string>()
+    for (const task of tasks) {
+      for (const tag of task.tags ?? []) if (tag.trim()) tagSet.add(tag.trim())
+      for (const ctx of task.contexts ?? []) if (ctx.trim()) ctxSet.add(ctx.trim())
+    }
+    return buildQuickTaskSuggestions({
+      tags: [...tagSet].sort((a, b) => a.localeCompare(b, "ru")),
+      contexts: [...ctxSet].sort((a, b) => a.localeCompare(b, "ru")),
+      projects: projects.filter((project) => !project.archived).map((project) => ({ id: project.id, title: project.title })),
+      priorities: activePriorities.map((p) => ({ id: p.id, label: p.label })),
+      statuses: activeStatuses.map((s) => ({ id: s.id, label: s.label })),
+    })
+  }, [tasks, projects, activePriorities, activeStatuses])
+
   const nlpDraft = useMemo(() => {
     if (!title.trim()) return null
     return parseQuickTaskInput(title, today)
@@ -195,14 +212,21 @@ export function TasksPage() {
           <p className="mt-1 text-xs text-muted">{view === "active" ? "Активные задачи" : view === "archive" ? "Архив задач" : "Корзина"}</p>
         </div>
         <div className="flex gap-2">
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Например: Позвонить завтра в 14:30 !высокий #работа @офис" onKeyDown={(e) => e.key === "Enter" && handleAdd()} className="min-w-[200px]" />
+          <QuickTaskInput
+            value={title}
+            onChange={setTitle}
+            onSubmit={handleAdd}
+            placeholder="Например: Позвонить завтра в 14:30 !высокий #работа @офис"
+            className="min-w-[200px]"
+            suggestions={quickSuggestions}
+          />
           {view === "active" && <Button onClick={handleAdd}>Добавить</Button>}
         </div>
         {view === "active" && (
           <p className="-mt-3 text-xs text-muted">
             Дата: сегодня, завтра, в пятницу, 15 декабря, через 3 дня; время: в 14:30 или с 09:00 до 10:30;
             срок: до пятницы / до ГГГГ-ММ-ДД; оценка: 30 минут, 2ч; приоритет: !высокий;
-            метки: #работа; контекст: @офис; проект: +Название; статус: *в_работе.
+            метки: #работа; контекст: @офис; проект: +Название; статус: *в_работе. Автодополнение: @ # + ! *
           </p>
         )}
         {view === "active" && nlpDraft && nlpDraft.title && (
@@ -411,7 +435,7 @@ export function TasksPage() {
                     <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} />
                   </td>
                   {taskTableColumns.map((col) => {
-                    const cell: Record<TaskTableColumn, React.ReactNode> = {
+                    const cell: Record<TaskTableColumn, ReactNode> = {
                       title: task.title,
                       status: (
                         <Select className="w-36" value={task.status} onClick={(e) => e.stopPropagation()} onChange={(event) => setTaskStatus(task.id, event.target.value as TaskStatus)}>
