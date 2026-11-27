@@ -1,6 +1,6 @@
-import { addDays } from "./dates"
-import { expandTaskOccurrences, type TaskOccurrenceView } from "./recurrence"
-import type { Task } from "./types"
+import { addDays } from "./dates.ts"
+import { expandTaskOccurrences, type TaskOccurrenceView } from "./recurrence.ts"
+import type { Task } from "./types.ts"
 
 export type TaskViewQuickFilter = "all" | "today" | "inbox" | "overdue" | "week" | "unblocked"
 
