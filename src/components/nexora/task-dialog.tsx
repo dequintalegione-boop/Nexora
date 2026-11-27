@@ -17,6 +17,7 @@ export function TaskDialog() {
   const projects = useNexora((s) => s.projects)
   const updateTask = useNexora((s) => s.updateTask)
   const setTaskStatus = useNexora((s) => s.setTaskStatus)
+  const skipTaskOccurrence = useNexora((s) => s.skipTaskOccurrence)
   const archiveTask = useNexora((s) => s.archiveTask)
   const restoreTask = useNexora((s) => s.restoreTask)
   const startTimer = useNexora((s) => s.startTimer)
@@ -300,6 +301,13 @@ export function TaskDialog() {
             }}>
               {activeTimer ? "Таймер уже запущен" : "Начать фокус"}
             </Button>
+            {(task.recurrenceRule || task.repeat) && task.status !== "done" && task.status !== "cancelled" && !task.archived && !task.deletedAt && (
+              <Button variant="ghost" onClick={() => {
+                if (skipTaskOccurrence(task.id)) setTaskId(null)
+              }}>
+                Пропустить повторение
+              </Button>
+            )}
             {task.archived || task.deletedAt ? (
               <Button variant="ghost" onClick={() => { restoreTask(task.id); setTaskId(null) }}>
                 Восстановить
