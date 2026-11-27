@@ -190,10 +190,11 @@ export function parseQuickTaskInput(input: string, today: string): QuickTaskDraf
     return prefix
   })
 
-  remaining = remaining.replace(/(^|\s)\*([\p{L}_-]+)(?=\s|$)/giu, (match, prefix: string, token: string) => {
-    const parsed = STATUS_TOKENS[token.toLocaleLowerCase("ru-RU")]
-    if (!parsed) return match
-    status = parsed
+  remaining = remaining.replace(/(^|\s)\*([\p{L}\p{N}_-]+)(?=\s|$)/giu, (match, prefix: string, token: string) => {
+    const key = token.toLocaleLowerCase("ru-RU")
+    const parsed = STATUS_TOKENS[key]
+    // Built-in aliases or raw status id (including custom_* from catalogs)
+    status = (parsed ?? token) as TaskStatus
     return prefix
   })
 
