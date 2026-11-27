@@ -98,7 +98,7 @@ function matchesCondition(task: Task, condition: TaskFilterCondition, tasks: Tas
 }
 
 export function matchesTaskFilterGroup(task: Task, group: TaskFilterGroup, tasks: Task[]): boolean {
-  if (group.rules.length === 0) return true
+  if (group.rules.length === 0) return group.conjunction === "and"
   const results = group.rules.map((rule) =>
     isTaskFilterGroup(rule)
       ? matchesTaskFilterGroup(task, rule, tasks)
