@@ -31,3 +31,13 @@ test("tasks without a previous time receive a one-hour slot", () => {
     allDay: false,
   })
 })
+
+test("moving a timed task from the month view keeps its clock time", async () => {
+  const { getCalendarDayDropPatch } = await import("./calendar.ts")
+  assert.deepEqual(getCalendarDayDropPatch(task, "2026-11-29"), {
+    scheduledDate: "2026-11-29",
+    startAt: "2026-11-29T09:00",
+    endAt: "2026-11-29T10:30",
+    allDay: false,
+  })
+})
