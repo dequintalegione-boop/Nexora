@@ -9,6 +9,8 @@ import { getDependencyState, getTaskChildren } from "@/lib/nexora/task-logic"
 export function TaskDialog() {
   const taskId = useUI((s) => s.taskId)
   const setTaskId = useUI((s) => s.setTaskId)
+  const taskOccurrence = useUI((s) => s.taskOccurrence)
+  const setTaskOccurrence = useUI((s) => s.setTaskOccurrence)
   const tasks = useNexora((s) => s.tasks)
   const settings = useNexora((s) => s.settings)
   const addTask = useNexora((s) => s.addTask)
@@ -16,6 +18,8 @@ export function TaskDialog() {
   const updateTask = useNexora((s) => s.updateTask)
   const setTaskStatus = useNexora((s) => s.setTaskStatus)
   const skipTaskOccurrence = useNexora((s) => s.skipTaskOccurrence)
+  const skipVirtualTaskOccurrence = useNexora((s) => s.skipVirtualTaskOccurrence)
+  const materializeTaskOccurrence = useNexora((s) => s.materializeTaskOccurrence)
   const updateRecurrenceSeries = useNexora((s) => s.updateRecurrenceSeries)
   const archiveTask = useNexora((s) => s.archiveTask)
   const restoreTask = useNexora((s) => s.restoreTask)
@@ -27,6 +31,52 @@ export function TaskDialog() {
 
   const task = tasks.find((t) => t.id === taskId)
   if (!task) return null
+
+  const selectedOccurrence = taskOccurrence?.seriesId === task.id ? taskOccurrence : null
+  if (selectedOccurrence) {
+    const occurrenceDateLabel = new Date(`${selectedOccurrence.occurrenceDate}T12:00:00`).toLocaleDateString("ru-RU", {
+      weekday: "long", day: "numeric", month: "long", year: "numeric",
+    })
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setTaskId(null)}>
+        <Card className="w-full max-w-md space-y-4 p-5" onClick={(event) => event.stopPropagation()}>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-teal-300">Повторяющаяся задача</p>
+            <h2 className="mt-1 text-lg font-semibold">{task.title}</h2>
+            <p className="mt-1 text-sm capitalize text-muted">{occurrenceDateLabel}</p>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3 text-sm text-muted">
+            Это виртуальный экземпляр. Выберите действие, чтобы не изменить всю серию случайно.
+          </div>
+          <div className="grid gap-2">
+            <Button onClick={() => {
+              const instanceId = materializeTaskOccurrence(selectedOccurrence.task)
+              if (instanceId) {
+                setTaskOccurrence(null)
+                setTaskId(instanceId)
+              }
+            }}>
+              Изменить только это повторение
+            </Button>
+            <Button variant="secondary" onClick={() => {
+              if (skipVirtualTaskOccurrence(selectedOccurrence.seriesId, selectedOccurrence.occurrenceDate)) {
+                setTaskId(null)
+              }
+            }}>
+              Пропустить только эту дату
+            </Button>
+            <Button variant="ghost" onClick={() => setTaskOccurrence(null)}>
+              Редактировать всю серию
+            </Button>
+          </div>
+          <div className="flex justify-end">
+            <Button variant="ghost" onClick={() => setTaskId(null)}>Закрыть</Button>
+          </div>
+        </Card>
+      </div>
+    )
+  }
+
   const dependencyState = getDependencyState(task, tasks)
   const children = getTaskChildren(tasks, task.id)
   const statusOptions = getStatusSelectOptions(settings, task.status)
@@ -35,6 +85,19 @@ export function TaskDialog() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setTaskId(null)}>
       <Card className="w-full max-w-lg p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+        {task.recurrenceParentId && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-teal-400/20 bg-teal-400/[0.06] p-3">
+            <p className="min-w-0 flex-1 text-xs text-teal-100">
+              Отдельный экземпляр повторения. Изменения затрагивают только эту дату.
+            </p>
+            <Button size="sm" variant="secondary" onClick={() => {
+              setTaskOccurrence(null)
+              setTaskId(task.recurrenceParentId!)
+            }}>
+              Открыть серию
+            </Button>
+          </div>
+        )}
         <div className="flex items-start justify-between gap-3">
           <Input
             value={task.title}
@@ -221,6 +284,7 @@ export function TaskDialog() {
           <p className="text-xs text-muted">Для доставки нужны разрешение браузера и открытое приложение Nexora. После закрытия браузера локальный таймер не работает.</p>
         </div>
 
+        {!task.recurrenceParentId && (
         <div className="space-y-2 rounded-lg border border-white/10 p-3">
           <label className="text-xs text-muted">Повторение задачи</label>
           <div className="grid grid-cols-2 gap-2">
@@ -532,6 +596,7 @@ export function TaskDialog() {
             </div>
           )}
         </div>
+        )}
 
         <div className="space-y-2">
           <label className="text-xs text-muted">Зависит от (сначала нужно выполнить)</label>
