@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware"
 import { STATUS_LABEL, WIDGETS } from "./copy"
 import { addDays, isoDate } from "./dates"
 import { buildSeed } from "./seed"
-import { runTaskAutomations } from "./automations"
+import { getTasksDueForAutomation, runTaskAutomations } from "./automations"
 import type { TaskAutomationRule } from "./automations"
 import { buildNextTaskOccurrence, canAddTaskDependency, canSetTaskParent, updateRecurrenceSeriesTasks } from "./task-logic"
 import type {
@@ -102,6 +102,8 @@ type Store = Persisted & {
   addAutomationRule: (rule: Omit<TaskAutomationRule, "id" | "createdAt" | "updatedAt">) => string
   updateAutomationRule: (id: string, patch: Partial<TaskAutomationRule>) => void
   removeAutomationRule: (id: string) => void
+  /** Evaluate due-date automation rules for open tasks that are due today or overdue. */
+  runDueAutomations: () => void
 }
 
 export const useNexora = create<Store>()(
@@ -544,16 +546,7 @@ export const useNexora = create<Store>()(
           if (existing) {
             return {
               entries: s.entries.map((e) =>
-                e.date === date
-                  ? {
-                      ...e,
-                      ...patch,
-                      reflection: patch.reflection
-                        ? { ...e.reflection, ...patch.reflection }
-                        : e.reflection,
-                      updatedAt: now,
-                    }
-                  : e
+                e.id === existing.id ? { ...e, ...patch, updatedAt: now } : e
               ),
             }
           }
@@ -581,6 +574,7 @@ export const useNexora = create<Store>()(
               description: input.description,
               targetDate: input.targetDate,
               projectIds: input.projectIds,
+              notes: input.notes,
             },
             ...s.goals,
           ],
@@ -596,37 +590,36 @@ export const useNexora = create<Store>()(
         })),
 
       startTimer: (input) => {
-        const startedAt = nowISO()
-        set((state) => state.activeTimer ? state : ({
+        const now = nowISO()
+        set({
           activeTimer: {
             kind: input?.kind ?? "focus",
-            startedAt,
-            sessionStartedAt: startedAt,
+            startedAt: now,
+            sessionStartedAt: now,
             taskId: input?.taskId,
             label: input?.title,
             accumulatedMs: 0,
           },
-        }))
+        })
       },
 
       pauseTimer: () =>
         set((s) => {
           if (!s.activeTimer || s.activeTimer.pausedAt) return s
-          const elapsed =
-            (s.activeTimer.accumulatedMs ?? 0) +
-            (Date.now() - new Date(s.activeTimer.startedAt).getTime())
+          const started = new Date(s.activeTimer.startedAt).getTime()
+          const accumulated = (s.activeTimer.accumulatedMs ?? 0) + (Date.now() - started)
           return {
             activeTimer: {
               ...s.activeTimer,
               pausedAt: nowISO(),
-              accumulatedMs: elapsed,
+              accumulatedMs: accumulated,
             },
           }
         }),
 
       resumeTimer: () =>
         set((s) => {
-          if (!s.activeTimer || !s.activeTimer.pausedAt) return s
+          if (!s.activeTimer?.pausedAt) return s
           return {
             activeTimer: {
               ...s.activeTimer,
@@ -637,40 +630,42 @@ export const useNexora = create<Store>()(
         }),
 
       stopTimer: () => {
-        const timer = get().activeTimer
-        if (!timer) return null
-        const elapsed =
-          (timer.accumulatedMs ?? 0) +
-          (timer.pausedAt ? 0 : Date.now() - new Date(timer.startedAt).getTime())
-        const minutes = Math.round(elapsed / 60000)
+        const s = get()
+        if (!s.activeTimer) return null
+        const now = nowISO()
+        const started = new Date(s.activeTimer.startedAt).getTime()
+        let ms = s.activeTimer.accumulatedMs ?? 0
+        if (!s.activeTimer.pausedAt) ms += Date.now() - started
+        const durationMinutes = Math.max(1, Math.round(ms / 60000))
         const session: TimeSession = {
           id: nid("sess"),
-          createdAt: nowISO(),
-          updatedAt: nowISO(),
-          kind: timer.kind,
-          startedAt: timer.sessionStartedAt ?? timer.startedAt,
-          endedAt: nowISO(),
-          taskId: timer.taskId,
-          title: timer.label,
-          durationMinutes: minutes,
+          createdAt: now,
+          updatedAt: now,
+          kind: s.activeTimer.kind,
+          startedAt: s.activeTimer.sessionStartedAt ?? s.activeTimer.startedAt,
+          endedAt: now,
+          taskId: s.activeTimer.taskId,
+          title: s.activeTimer.label,
+          durationMinutes,
         }
-        set((s) => ({
-          activeTimer: null,
-          sessions: [session, ...s.sessions],
-          tasks: timer.taskId
-            ? s.tasks.map((task) => task.id === timer.taskId
-                ? {
-                    ...task,
-                    actualMinutes: (task.actualMinutes ?? 0) + minutes,
-                    updatedAt: nowISO(),
-                    history: [
-                      ...(task.history ?? []),
-                      { at: nowISO(), change: `Учтено времени: ${minutes} мин.` },
-                    ].slice(-100),
-                  }
-                : task)
-            : s.tasks,
-        }))
+        set((state) => {
+          const tasks = state.activeTimer?.taskId
+            ? state.tasks.map((t) =>
+                t.id === state.activeTimer!.taskId
+                  ? {
+                      ...t,
+                      actualMinutes: (t.actualMinutes ?? 0) + durationMinutes,
+                      updatedAt: now,
+                    }
+                  : t
+              )
+            : state.tasks
+          return {
+            sessions: [session, ...state.sessions],
+            activeTimer: null,
+            tasks,
+          }
+        })
         return session.id
       },
 
@@ -686,6 +681,37 @@ export const useNexora = create<Store>()(
         automationRules: (state.automationRules ?? []).map((rule) => rule.id === id ? { ...rule, ...patch, id, updatedAt: nowISO() } : rule),
       })),
       removeAutomationRule: (id) => set((state) => ({ automationRules: (state.automationRules ?? []).filter((rule) => rule.id !== id) })),
+
+      runDueAutomations: () => {
+        const state = get()
+        const candidates = getTasksDueForAutomation(
+          state.tasks,
+          state.automationRuns ?? [],
+          new Date(),
+        )
+        if (candidates.length === 0) return
+
+        let tasks = state.tasks
+        const allRuns = [...(state.automationRuns ?? [])]
+        const now = nowISO()
+
+        for (const task of candidates) {
+          const event = {
+            type: "task.due" as const,
+            taskId: task.id,
+            eventId: nid("event"),
+            occurredAt: now,
+          }
+          const result = runTaskAutomations(tasks, state.automationRules ?? [], event)
+          tasks = result.tasks
+          allRuns.unshift(...result.runs)
+        }
+
+        set({
+          tasks,
+          automationRuns: allRuns.slice(0, 200),
+        })
+      },
     }),
     {
       name: "nexora-v1",
