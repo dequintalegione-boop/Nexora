@@ -10,6 +10,7 @@ import {
   startOfWeek,
 } from "@/lib/nexora/dates"
 import {
+  getAgendaLoadIncrement,
   getCalendarCreatePatch,
   getCalendarDayActivity,
   getCalendarDayDropPatch,
@@ -202,7 +203,7 @@ export function CalendarPage() {
 
     const nextObserver = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) {
-        setAgendaDayCount((count) => Math.min(365, count + 7))
+        setAgendaDayCount((count) => Math.min(365, count + getAgendaLoadIncrement(count)))
       }
     }, { root, rootMargin: "180px 0px 180px 0px" })
     nextObserver.observe(bottomSentinel)
@@ -213,7 +214,7 @@ export function CalendarPage() {
       previousObserver = new IntersectionObserver((entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return
         if (agendaPrependHeightRef.current !== null) return
-        const increment = Math.min(7, 365 - agendaDayCount)
+        const increment = getAgendaLoadIncrement(agendaDayCount)
         if (increment <= 0) return
         agendaPrependHeightRef.current = root.scrollHeight
         setAgendaStartDate((start) => addDays(start, -increment))
@@ -552,7 +553,7 @@ export function CalendarPage() {
   }
 
   const loadPreviousAgendaDays = () => {
-    const increment = Math.min(7, 365 - agendaDayCount)
+    const increment = getAgendaLoadIncrement(agendaDayCount)
     if (increment <= 0) return
     const container = agendaScrollRef.current
     if (container && agendaPrependHeightRef.current === null) agendaPrependHeightRef.current = container.scrollHeight
@@ -561,7 +562,7 @@ export function CalendarPage() {
   }
 
   const loadNextAgendaDays = () => {
-    setAgendaDayCount((count) => Math.min(365, count + 7))
+    setAgendaDayCount((count) => Math.min(365, count + getAgendaLoadIncrement(count)))
   }
 
   const completeAgendaTask = (task: CalendarTask) => {
