@@ -1,7 +1,7 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import type { Priority, TaskStatus } from "./types"
-import type { TaskFilterGroup } from "./task-filters"
+import type { TaskFilterGroup } from "./task-filters"\nimport type { KanbanGroupBy } from "./kanban"
 
 export type TaskTableColumn =
   | "title"
@@ -72,7 +72,7 @@ export const useUI = create<UIState>()(
       removeTaskView: (id) => set((state) => ({
         savedTaskViews: state.savedTaskViews.filter((view) => view.id !== id),
       })),
-      toggleTaskTableColumn: (column) => set((state) => {
+      setKanbanGroupBy: (kanbanGroupBy) => set({ kanbanGroupBy }),\n      toggleTaskTableColumn: (column) => set((state) => {
         const current = state.taskTableColumns ?? DEFAULT_TASK_TABLE_COLUMNS
         if (current.includes(column)) {
           // The task title is the table's anchor and cannot be hidden.
