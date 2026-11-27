@@ -1,6 +1,6 @@
 import { useNexora } from "@/lib/nexora/store"
 import { useUI } from "@/lib/nexora/ui-store"
-import { getStatusSelectOptions, getPrioritySelectOptions } from "@/lib/nexora/copy"
+import { getStatusSelectOptions, getPrioritySelectOptions, getTaskStatusDefinitions } from "@/lib/nexora/copy"
 import type { RecurrenceFrequency } from "@/lib/nexora/types"
 import type { TaskStatus, Priority } from "@/lib/nexora/types"
 import { Button, Card, Input, Select, Textarea } from "./ui"
@@ -31,6 +31,8 @@ export function TaskDialog() {
 
   const task = tasks.find((t) => t.id === taskId)
   if (!task) return null
+  const completedStatusId = getTaskStatusDefinitions(settings).find((status) => status.category === "done" && !status.hidden)?.id
+    ?? getTaskStatusDefinitions(settings).find((status) => status.category === "done")?.id
 
   const selectedOccurrence = taskOccurrence?.seriesId === task.id ? taskOccurrence : null
   if (selectedOccurrence) {
@@ -58,6 +60,17 @@ export function TaskDialog() {
             }}>
               Изменить только это повторение
             </Button>
+            {completedStatusId ? (
+              <Button variant="secondary" onClick={() => {
+                const instanceId = materializeTaskOccurrence(selectedOccurrence.task)
+                if (instanceId) {
+                  setTaskStatus(instanceId, completedStatusId as TaskStatus)
+                  setTaskId(null)
+                }
+              }}>
+                Выполнить только это повторение
+              </Button>
+            ) : null}
             <Button variant="secondary" onClick={() => {
               if (skipVirtualTaskOccurrence(selectedOccurrence.seriesId, selectedOccurrence.occurrenceDate)) {
                 setTaskId(null)
