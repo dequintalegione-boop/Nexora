@@ -127,13 +127,20 @@ function escapeCsvCell(value: string): string {
   return '"' + value.replace(/"/g, '""') + '"'
 }
 
+
+function isSpreadsheetFormulaText(value: string): boolean {
+  let index = 0
+  while (index < value.length && value.charCodeAt(index) <= 0x20) index += 1
+  const first = value[index]
+  return first === '=' || first === '+' || first === '-' || first === '@'
+}
 function encodeTaskValue(value: unknown): string {
   if (value === undefined || value === null) return ""
   if (typeof value === "object") return JSON.stringify(value)
   if (typeof value === "boolean") return value ? "true" : "false"
   const text = String(value)
   // Prefix formula-like text so opening CSV in spreadsheet software cannot execute it.
-  return /^[\\s\\u0000]*[=+@-]/.test(text) ? "'" + text : text
+  return isSpreadsheetFormulaText(text) ? "'" + text : text
 }
 
 /** Export all task fields in a UTF-8 CSV that can be round-tripped by Nexora. */
@@ -297,7 +304,7 @@ function cellFor(row: string[], fieldIndexes: Map<keyof Task, number>, field: ke
   const index = fieldIndexes.get(field)
   if (index === undefined) return ""
   const value = (row[index] ?? "").trim()
-  return safeCsv && value.startsWith("'") && /^[\\s\\u0000]*[=+@-]/.test(value.slice(1))
+  return safeCsv && value.startsWith("'") && isSpreadsheetFormulaText(value.slice(1))
     ? value.slice(1)
     : value
 }
