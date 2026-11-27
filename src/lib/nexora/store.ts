@@ -59,6 +59,9 @@ export function defaultSettings(): Settings {
     hiddenWidgets: [],
     notificationsEnabled: false,
     pomodoro: { ...DEFAULT_POMODORO_SETTINGS },
+    calendarSnapMinutes: 15,
+    calendarPixelsPerHour: 88,
+    calendarFitToWindow: false,
   }
 }
 
