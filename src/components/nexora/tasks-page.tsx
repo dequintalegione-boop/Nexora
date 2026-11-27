@@ -160,9 +160,13 @@ export function TasksPage() {
     const template = taskTemplates.find((item) => item.id === templateId)
     if (!template) return
     const templateInput = buildTaskInputFromTemplate(template)
-    if (templateInput.projectId && !projects.some((project) => project.id === templateInput.projectId && !project.archived)) {
-      templateInput.projectId = undefined
-      templateInput.projectIds = []
+    const activeProjectIds = new Set(projects.filter((project) => !project.archived).map((project) => project.id))
+    templateInput.projectIds = (templateInput.projectIds ?? []).filter((id) => activeProjectIds.has(id))
+    if (templateInput.projectId && !activeProjectIds.has(templateInput.projectId)) {
+      templateInput.projectId = templateInput.projectIds[0]
+    }
+    if (!templateInput.projectId && templateInput.projectIds.length > 0) {
+      templateInput.projectId = templateInput.projectIds[0]
     }
     const id = addTask(templateInput)
     setTaskId(id)
