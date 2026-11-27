@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware"
 import { STATUS_LABEL, WIDGETS } from "./copy"
 import { addDays, isoDate } from "./dates"
 import { buildSeed } from "./seed"
-import { buildNextTaskOccurrence, canAddTaskDependency, canSetTaskParent } from "./task-logic"
+import { buildNextTaskOccurrence, canAddTaskDependency, canSetTaskParent, updateRecurrenceSeriesTasks } from "./task-logic"
 import type {
   ActiveTimer,
   DailyEntry,
@@ -17,6 +17,7 @@ import type {
   Settings,
   Task,
   TaskStatus,
+  RecurrenceRule,
   TimeSession,
 } from "./types"
 
@@ -67,6 +68,8 @@ type Store = Persisted & {
   addTask: (input: Partial<Task> & { title: string }) => string
   updateTask: (id: string, patch: Partial<Task>) => void
   setTaskStatus: (id: string, status: TaskStatus) => void
+  skipTaskOccurrence: (id: string) => boolean
+  updateRecurrenceSeries: (id: string, rule?: RecurrenceRule) => number
   archiveTask: (id: string) => void
   restoreTask: (id: string) => void
   removeTask: (id: string) => void
@@ -164,6 +167,8 @@ export const useNexora = create<Store>()(
           description: input.description,
           dueDate: input.dueDate,
           scheduledDate: input.scheduledDate,
+          startAt: input.startAt,
+          endAt: input.endAt,
           projectId: input.projectId,
           directionId: input.directionId,
           estimatedMinutes: input.estimatedMinutes,
@@ -224,6 +229,66 @@ export const useNexora = create<Store>()(
 
           return { tasks: nextTasks }
         }),
+
+      updateRecurrenceSeries: (id, rule) => {
+        const now = nowISO()
+        let updatedCount = 0
+        set((state) => {
+          const result = updateRecurrenceSeriesTasks(state.tasks, id, rule, now)
+          updatedCount = result.updatedCount
+          return { tasks: result.tasks }
+        })
+        return updatedCount
+      },
+
+      skipTaskOccurrence: (id) => {
+        const current = get().tasks.find((task) => task.id === id)
+        if (!current || current.deletedAt || current.archived) return false
+        if (!current.recurrenceRule && !current.repeat) return false
+        if (current.status === "done" || current.status === "cancelled") return false
+
+        const now = nowISO()
+        const occurrenceKey =
+          current.occurrenceDate ??
+          current.scheduledDate ??
+          current.dueDate ??
+          now.slice(0, 10)
+        const skippedOccurrences = [...new Set([...(current.skippedOccurrences ?? []), occurrenceKey])]
+        const next = buildNextTaskOccurrence(
+          { ...current, skippedOccurrences },
+          now
+        )
+
+        set((state) => {
+          const nextTasks = state.tasks.map((task) =>
+            task.id === id
+              ? {
+                  ...task,
+                  status: "cancelled" as const,
+                  completedAt: undefined,
+                  skippedOccurrences,
+                  updatedAt: now,
+                  history: [
+                    ...(task.history ?? []),
+                    { at: now, change: `Повторение ${occurrenceKey} пропущено` },
+                  ].slice(-100),
+                }
+              : task
+          )
+
+          if (next) {
+            const seriesId = current.recurrenceParentId ?? current.id
+            const exists = state.tasks.some((task) =>
+              (task.recurrenceParentId ?? task.id) === seriesId &&
+              task.occurrenceDate === next.occurrenceDate
+            )
+            if (!exists) nextTasks.unshift({ ...next, id: nid("task") })
+          }
+
+          return { tasks: nextTasks }
+        })
+        return true
+      },
 
       archiveTask: (id) =>
         set((s) => {
