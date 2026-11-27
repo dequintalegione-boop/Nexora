@@ -1668,7 +1668,13 @@ export function CalendarPage() {
 
 
         {view === "agenda" ? (
-          <div className="nexora-calendar-agenda divide-y divide-white/[0.08]">
+          <div
+            ref={agendaScrollRef}
+            className="nexora-calendar-agenda-scroll"
+            onScroll={() => setAgendaHasScrolled(true)}
+          >
+            <div ref={agendaTopSentinelRef} className="nexora-calendar-agenda-sentinel" aria-hidden="true" />
+            <div className="nexora-calendar-agenda divide-y divide-white/[0.08]">
             {agendaDays.filter((day) => showWeekends || ![0, 6].includes(parseISODate(day).getDay())).map((day) => {
               const dayTasks = [...tasksForDay(day)].sort((a, b) => {
                 const aTime = taskMinutes(a)?.start ?? -1
@@ -1824,14 +1830,13 @@ export function CalendarPage() {
                 </section>
               )
             })}
+            </div>
+            <div ref={agendaBottomSentinelRef} className="nexora-calendar-agenda-sentinel" aria-hidden="true" />
             <div className="flex justify-center gap-2 p-4">
-              <button type="button" className="nexora-calendar-today" onClick={() => {
-                setSelected(addDays(selected, -7))
-                setAgendaDayCount((count) => Math.min(35, count + 7))
-              }}>
+              <button type="button" className="nexora-calendar-today" disabled={agendaDayCount >= 365} onClick={loadPreviousAgendaDays}>
                 Предыдущие дни
               </button>
-              <button type="button" className="nexora-calendar-new" disabled={agendaDayCount >= 35} onClick={() => setAgendaDayCount((count) => Math.min(35, count + 7))}>
+              <button type="button" className="nexora-calendar-new" disabled={agendaDayCount >= 365} onClick={loadNextAgendaDays}>
                 Показать ещё 7 дней
               </button>
             </div>
