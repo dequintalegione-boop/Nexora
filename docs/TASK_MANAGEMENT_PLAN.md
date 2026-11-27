@@ -192,7 +192,6 @@ Nexora использует два существующих режима хра�
 - TimeEntry: id, taskId, startedAt, endedAt, durationSeconds, description, source, pomodoroSessionId;
 - PomodoroSession: id, taskId, mode, startedAt, endedAt, plannedSeconds, actualSeconds, status, linkedTimeEntryId;
 - CalendarConnection: id, provider, accountLabel, status, scopes, lastSyncAt, cursor/token metadata on host only;
-- CalendarEventLink: id, provider, externalEventId, taskId, syncVersion, direction;
 - TaskTemplate: id, name, bodyTemplate, defaults, occurrenceTemplate;
 - AutomationRule: id, name, trigger, conditions, actions, enabled;
 - TaskEvent: id, eventType, entityId, timestamp, actor/source, correlationId, safe payload.
@@ -1032,7 +1031,6 @@ TaskNotes поддерживает интерфейс на нескольких 
 - отключённые разрешения уведомлений;
 - закрытая вкладка/браузер и host off/on;
 - отзыв доступа;
-- rate limit и недоступность Google/Microsoft;
 
 ### Безопасность
 - секреты отсутствуют в backup и логах;
