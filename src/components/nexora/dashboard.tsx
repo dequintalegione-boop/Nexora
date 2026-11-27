@@ -1,8 +1,10 @@
 import { useMemo, useState, type ReactElement } from "react"
+import { format } from "date-fns"
+import { ru } from "date-fns/locale"
 import { useNexora } from "@/lib/nexora/store"
 import { useUI } from "@/lib/nexora/ui-store"
-import { WIDGETS, STATUS_LABEL } from "@/lib/nexora/copy"
-import { isoDate, addDays, format, parseISODate, startOfWeek, ru } from "@/lib/nexora/dates"
+import { WIDGETS } from "@/lib/nexora/copy"
+import { isoDate, parseISODate } from "@/lib/nexora/dates"
 import { dayTaskPool, isTodayTask, isScheduled, isDoneLog, logKey, logMap, suggestTask } from "@/lib/nexora/logic"
 import { Button, Card, Input } from "./ui"
 

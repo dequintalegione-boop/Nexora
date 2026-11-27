@@ -72,3 +72,51 @@ export function Badge({ children, priority, className }: { children: ReactNode; 
     </span>
   )
 }
+
+export function PageHeader({
+  kicker,
+  title,
+  text,
+  children,
+}: {
+  kicker?: string
+  title: string
+  text?: string
+  children?: ReactNode
+}) {
+  return (
+    <header className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      <div className="min-w-0">
+        {kicker && <p className="mb-1 text-xs font-medium uppercase tracking-wider text-dim">{kicker}</p>}
+        <h1 className="text-2xl font-semibold">{title}</h1>
+        {text && <p className="mt-1 max-w-2xl text-sm text-muted">{text}</p>}
+      </div>
+      {children && <div className="shrink-0">{children}</div>}
+    </header>
+  )
+}
+
+export function Meter({
+  value,
+  className,
+}: {
+  value: number
+  className?: string
+}) {
+  const safeValue = Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0
+
+  return (
+    <div
+      className={cn("h-2 w-full overflow-hidden rounded-full bg-white/10", className)}
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={safeValue}
+    >
+      <div
+        className="h-full rounded-full bg-teal-400 transition-[width] duration-300"
+        style={{ width: `${safeValue}%` }}
+      />
+    </div>
+  )
+}

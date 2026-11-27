@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware"
 import { STATUS_LABEL, WIDGETS } from "./copy"
 import { addDays, isoDate } from "./dates"
 import { buildSeed } from "./seed"
+import { buildNextTaskOccurrence, canAddTaskDependency, canSetTaskParent } from "./task-logic"
 import type {
   ActiveTimer,
   DailyEntry,
@@ -56,6 +57,7 @@ function emptyData(): Persisted {
 
 type Store = Persisted & {
   hydrated: boolean
+  markHydrated: () => void
   timerIntent: string | null
   loadSeed: (keepPrefs?: boolean) => void
   replaceAll: (data: Persisted) => void
@@ -66,7 +68,12 @@ type Store = Persisted & {
   updateTask: (id: string, patch: Partial<Task>) => void
   setTaskStatus: (id: string, status: TaskStatus) => void
   archiveTask: (id: string) => void
+  restoreTask: (id: string) => void
   removeTask: (id: string) => void
+  permanentlyDeleteTask: (id: string) => void
+  setTaskParent: (id: string, parentId?: string) => boolean
+  addTaskDependency: (id: string, dependencyId: string) => boolean
+  removeTaskDependency: (id: string, dependencyId: string) => void
   addProject: (input: Partial<Project> & { title: string }) => string
   updateProject: (id: string, patch: Partial<Project>) => void
   addDirection: (input: Partial<Direction> & { title: string }) => string
@@ -91,9 +98,25 @@ export const useNexora = create<Store>()(
     (set, get) => ({
       ...emptyData(),
       hydrated: false,
+      markHydrated: () => set({ hydrated: true }),
       timerIntent: null,
 
       loadSeed: (keepPrefs = false) => {
+        const current = get()
+        const hasUserData = [
+          current.directions,
+          current.projects,
+          current.tasks,
+          current.habits,
+          current.habitLogs,
+          current.entries,
+          current.goals,
+          current.sessions,
+        ].some((items) => items.length > 0)
+
+        // Demo data must never overwrite real user content.
+        if (hasUserData) return
+
         const seed = buildSeed()
         set((state) => ({
           ...seed,
@@ -145,6 +168,14 @@ export const useNexora = create<Store>()(
           directionId: input.directionId,
           estimatedMinutes: input.estimatedMinutes,
           tags: input.tags,
+          projectIds: input.projectIds ?? (input.projectId ? [input.projectId] : undefined),
+          parentId: input.parentId,
+          dependsOn: input.dependsOn ?? [],
+          recurrenceRule: input.recurrenceRule,
+          reminders: input.reminders ?? [],
+          links: input.links ?? [],
+          contexts: input.contexts ?? [],
+          history: [{ at: now, change: "Задача создана" }],
         }
         set((s) => ({ tasks: [task, ...s.tasks] }))
         return id
@@ -158,30 +189,128 @@ export const useNexora = create<Store>()(
         })),
 
       setTaskStatus: (id, status) =>
-        set((s) => ({
-          tasks: s.tasks.map((t) =>
-            t.id === id
+        set((s) => {
+          const now = nowISO()
+          const current = s.tasks.find((task) => task.id === id)
+          if (!current) return s
+
+          const nextTasks = s.tasks.map((task) =>
+            task.id === id
               ? {
-                  ...t,
+                  ...task,
                   status,
-                  updatedAt: nowISO(),
+                  completedAt: status === "done" ? now : undefined,
+                  updatedAt: now,
                   history: [
-                    ...(t.history ?? []),
-                    { at: nowISO(), change: `Статус → ${STATUS_LABEL[status]}` },
-                  ].slice(-20),
+                    ...(task.history ?? []),
+                    { at: now, change: `Статус → ${s.settings.taskStatusLabels?.[status]?.trim() || STATUS_LABEL[status]}` },
+                  ].slice(-100),
                 }
-              : t
-          ),
-        })),
+              : task
+          )
+
+          // Materialize the next occurrence only on the first transition to Done.
+          if (status === "done" && current.status !== "done") {
+            const next = buildNextTaskOccurrence(current, now)
+            if (next) {
+              const seriesId = current.recurrenceParentId ?? current.id
+              const alreadyCreated = s.tasks.some((task) =>
+                (task.recurrenceParentId ?? task.id) === seriesId &&
+                task.occurrenceDate === next.occurrenceDate
+              )
+              if (!alreadyCreated) nextTasks.unshift({ ...next, id: nid("task") })
+            }
+          }
+
+          return { tasks: nextTasks }
+        }),
 
       archiveTask: (id) =>
+        set((s) => {
+          const now = nowISO()
+          return {
+            tasks: s.tasks.map((t) =>
+              t.id === id
+                ? { ...t, archived: true, archivedAt: now, updatedAt: now,
+                    history: [...(t.history ?? []), { at: now, change: "Задача архивирована" }].slice(-100) }
+                : t
+            ),
+          }
+        }),
+
+      restoreTask: (id) =>
+        set((s) => {
+          const now = nowISO()
+          return {
+            tasks: s.tasks.map((t) =>
+              t.id === id
+                ? { ...t, archived: false, archivedAt: undefined, deletedAt: undefined, updatedAt: now,
+                    history: [...(t.history ?? []), { at: now, change: "Задача восстановлена" }].slice(-100) }
+                : t
+            ),
+          }
+        }),
+
+      removeTask: (id) =>
+        set((s) => {
+          const now = nowISO()
+          return {
+            tasks: s.tasks.map((t) =>
+              t.id === id
+                ? { ...t, deletedAt: now, updatedAt: now,
+                    history: [...(t.history ?? []), { at: now, change: "Задача перемещена в корзину" }].slice(-100) }
+                : t
+            ),
+          }
+        }),
+
+      permanentlyDeleteTask: (id) =>
         set((s) => ({
-          tasks: s.tasks.map((t) =>
-            t.id === id ? { ...t, archived: true, updatedAt: nowISO() } : t
-          ),
+          tasks: s.tasks
+            .filter((t) => t.id !== id)
+            .map((t) => ({
+              ...t,
+              parentId: t.parentId === id ? undefined : t.parentId,
+              dependsOn: t.dependsOn?.filter((dependencyId) => dependencyId !== id),
+            })),
         })),
 
-      removeTask: (id) => set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) })),
+      setTaskParent: (id, parentId) => {
+        const tasks = get().tasks
+        if (!canSetTaskParent(tasks, id, parentId)) return false
+        const now = nowISO()
+        set((s) => ({
+          tasks: s.tasks.map((t) => t.id === id ? {
+            ...t, parentId, updatedAt: now,
+            history: [...(t.history ?? []), { at: now, change: parentId ? "Изменена родительская задача" : "Связь с родителем удалена" }].slice(-100),
+          } : t),
+        }))
+        return true
+      },
+
+      addTaskDependency: (id, dependencyId) => {
+        const tasks = get().tasks
+        if (!canAddTaskDependency(tasks, id, dependencyId)) return false
+        const now = nowISO()
+        set((s) => ({
+          tasks: s.tasks.map((t) => t.id === id ? {
+            ...t, dependsOn: [...new Set([...(t.dependsOn ?? []), dependencyId])], updatedAt: now,
+            history: [...(t.history ?? []), { at: now, change: "Добавлена зависимость" }].slice(-100),
+          } : t),
+        }))
+        return true
+      },
+
+      removeTaskDependency: (id, dependencyId) =>
+        set((s) => {
+          const now = nowISO()
+          return {
+            tasks: s.tasks.map((t) => t.id === id ? {
+              ...t, dependsOn: (t.dependsOn ?? []).filter((dependency) => dependency !== dependencyId), updatedAt: now,
+              history: [...(t.history ?? []), { at: now, change: "Удалена зависимость" }].slice(-100),
+            } : t),
+          }
+        }),
 
       addProject: (input) => {
         const id = nid("proj")
@@ -382,20 +511,23 @@ export const useNexora = create<Store>()(
           ),
         })),
 
-      startTimer: (input) =>
-        set({
+      startTimer: (input) => {
+        const startedAt = nowISO()
+        set((state) => state.activeTimer ? state : ({
           activeTimer: {
             kind: input?.kind ?? "focus",
-            startedAt: nowISO(),
+            startedAt,
+            sessionStartedAt: startedAt,
             taskId: input?.taskId,
             label: input?.title,
             accumulatedMs: 0,
           },
-        }),
+        }))
+      },
 
       pauseTimer: () =>
         set((s) => {
-          if (!s.activeTimer) return s
+          if (!s.activeTimer || s.activeTimer.pausedAt) return s
           const elapsed =
             (s.activeTimer.accumulatedMs ?? 0) +
             (Date.now() - new Date(s.activeTimer.startedAt).getTime())
@@ -410,7 +542,7 @@ export const useNexora = create<Store>()(
 
       resumeTimer: () =>
         set((s) => {
-          if (!s.activeTimer) return s
+          if (!s.activeTimer || !s.activeTimer.pausedAt) return s
           return {
             activeTimer: {
               ...s.activeTimer,
@@ -432,7 +564,7 @@ export const useNexora = create<Store>()(
           createdAt: nowISO(),
           updatedAt: nowISO(),
           kind: timer.kind,
-          startedAt: timer.startedAt,
+          startedAt: timer.sessionStartedAt ?? timer.startedAt,
           endedAt: nowISO(),
           taskId: timer.taskId,
           title: timer.label,
@@ -441,6 +573,19 @@ export const useNexora = create<Store>()(
         set((s) => ({
           activeTimer: null,
           sessions: [session, ...s.sessions],
+          tasks: timer.taskId
+            ? s.tasks.map((task) => task.id === timer.taskId
+                ? {
+                    ...task,
+                    actualMinutes: (task.actualMinutes ?? 0) + minutes,
+                    updatedAt: nowISO(),
+                    history: [
+                      ...(task.history ?? []),
+                      { at: nowISO(), change: `Учтено времени: ${minutes} мин.` },
+                    ].slice(-100),
+                  }
+                : task)
+            : s.tasks,
         }))
         return session.id
       },
@@ -450,12 +595,7 @@ export const useNexora = create<Store>()(
     {
       name: "nexora-v1",
       onRehydrateStorage: () => (state) => {
-        if (state) {
-          state.hydrated = true
-          if (!state.settings?.initialized) {
-            setTimeout(() => state.loadSeed?.(), 0)
-          }
-        }
+        state?.markHydrated()
       },
     }
   )

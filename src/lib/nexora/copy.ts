@@ -1,4 +1,4 @@
-import type { GoalStatus, Horizon, Priority, ProjectStatus, TaskStatus } from "./types"
+import type { GoalStatus, Horizon, Priority, ProjectStatus, Settings, TaskStatus } from "./types"
 
 export const WIDGETS = [
   { id: "progress", label: "Прогресс дня" },
@@ -19,6 +19,15 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
   cancelled: "Отменена",
 }
 
+export function getTaskStatusLabels(settings?: Pick<Settings, "taskStatusLabels">): Record<TaskStatus, string> {
+  return Object.fromEntries(
+    Object.entries(STATUS_LABEL).map(([key, fallback]) => [
+      key,
+      settings?.taskStatusLabels?.[key as TaskStatus]?.trim() || fallback,
+    ])
+  ) as Record<TaskStatus, string>
+}
+
 export const TASK_STATUSES: TaskStatus[] = [
   "inbox",
   "planned",
@@ -34,6 +43,15 @@ export const PRIORITY_LABEL: Record<Priority, string> = {
   medium: "Средний",
   high: "Высокий",
   critical: "Критический",
+}
+
+export function getTaskPriorityLabels(settings?: Pick<Settings, "taskPriorityLabels">): Record<Priority, string> {
+  return Object.fromEntries(
+    Object.entries(PRIORITY_LABEL).map(([key, fallback]) => [
+      key,
+      settings?.taskPriorityLabels?.[key as Priority]?.trim() || fallback,
+    ])
+  ) as Record<Priority, string>
 }
 
 export const PRIORITIES: Priority[] = ["none", "low", "medium", "high", "critical"]

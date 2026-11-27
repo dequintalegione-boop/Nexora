@@ -48,9 +48,13 @@ export function CalendarPage() {
     return `${format(parseISODate(start), "d MMM", { locale: ru })} – ${format(parseISODate(end), "d MMM yyyy", { locale: ru })}`
   })()
 
-  const dayTasks = tasks.filter(
-    (task) => !task.archived && (task.dueDate === selected || task.scheduledDate === selected)
-  )
+  const isTaskOnDay = (task: (typeof tasks)[number], day: string) =>
+    !task.archived &&
+    !task.deletedAt &&
+    task.status !== "cancelled" &&
+    (task.scheduledDate === day || task.dueDate === day || task.startAt?.slice(0, 10) === day)
+
+  const dayTasks = tasks.filter((task) => isTaskOnDay(task, selected))
   const dayHabits = habits.filter((h) => h.active && !h.archived && isScheduled(h, selected))
 
   const shift = (amount: number) => {
@@ -73,7 +77,7 @@ export function CalendarPage() {
 
   const taskCount = (day: string) =>
     tasks.filter(
-      (t) => !t.archived && t.status !== "cancelled" && (t.dueDate === day || t.scheduledDate === day)
+      (t) => isTaskOnDay(t, day)
     ).length
 
   const habitDoneCount = (day: string) => {
@@ -143,7 +147,7 @@ export function CalendarPage() {
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={(event) => {
                   const id = event.dataTransfer.getData("text/task-id")
-                  if (id) updateTask(id, { dueDate: day, scheduledDate: day })
+                  if (id) updateTask(id, { scheduledDate: day })
                 }}
                 className={cn(
                   "min-h-16 rounded-xl border px-1.5 py-1.5 text-left transition",
@@ -167,7 +171,7 @@ export function CalendarPage() {
                 {view === "week" && (
                   <div className="mt-1 space-y-0.5">
                     {tasks
-                      .filter((t) => !t.archived && (t.dueDate === day || t.scheduledDate === day))
+                      .filter((t) => isTaskOnDay(t, day))
                       .slice(0, 3)
                       .map((t) => (
                         <div key={t.id} className="truncate text-[11px] text-muted">
@@ -199,7 +203,6 @@ export function CalendarPage() {
             const id = addTask({
               title: value,
               status: "planned",
-              dueDate: selected,
               scheduledDate: selected,
               priority: "none",
             })
@@ -232,6 +235,8 @@ export function CalendarPage() {
                 onClick={() => setTaskId(task.id)}
               >
                 <span className={cn(task.status === "done" && "line-through text-muted")}>{task.title}</span>
+                {task.startAt && <span className="ml-2 text-xs text-muted">{new Date(task.startAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>}
+                {task.dueDate === selected && <span className="ml-2 text-[10px] text-amber-400">Дедлайн</span>}
               </button>
             ))}
           </div>

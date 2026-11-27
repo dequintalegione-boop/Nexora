@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useNexora } from "@/lib/nexora/store"
-import type { ProjectStatus, Priority } from "@/lib/nexora/types"
-import { Button, Card, Input, Select, Badge } from "./ui"
+import type { ProjectStatus } from "@/lib/nexora/types"
+import { Button, Card, Input, Badge } from "./ui"
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
   active: "Активный",
