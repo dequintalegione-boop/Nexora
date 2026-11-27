@@ -1477,13 +1477,13 @@ export function CalendarPage() {
 
         <div className="nexora-calendar-view-switch" role="group" aria-label="Вид календаря">
           {([
-            ["year", "Г"],
-            ["month", "М"],
-            ["week", "Н"],
-            ["days", `${dayCount}д`],
-            ["day", "Д"],
-            ["list", "С"],
-            ["agenda", "Пов."],
+            ["year", "Год"],
+            ["month", "Месяц"],
+            ["week", "Неделя"],
+            ["days", `${dayCount} дн.`],
+            ["day", "День"],
+            ["list", "Список"],
+            ["agenda", "Повестка"],
           ] as const).map(([id, label]) => (
             <button
               key={id}
