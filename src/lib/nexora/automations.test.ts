@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { matchesAutomationConditions, runTaskAutomations } from "./automations.ts"
+import { getTasksDueForAutomation, matchesAutomationConditions, runTaskAutomations } from "./automations.ts"
 import type { Task } from "./types.ts"
 import type { TaskAutomationRule, AutomationConditionGroup } from "./automations.ts"
 
@@ -89,7 +89,6 @@ test("nested OR group", () => {
 })
 
 test("deeply nested AND + OR", () => {
-  // (status == inbox AND (priority == high OR tag contains "работа"))
   const tree: AutomationConditionGroup = {
     operator: "and",
     conditions: [
@@ -196,4 +195,75 @@ test("rule with nested OR condition executes correctly", () => {
   })
   assert.equal(result.tasks[0].status, "planned")
   assert.equal(result.runs[0].result, "success")
+})
+
+test("getTasksDueForAutomation selects open overdue/due-today tasks", () => {
+  const openDue: Task = {
+    ...task,
+    id: "due-1",
+    dueDate: "2026-11-27",
+    status: "planned",
+  }
+  const future: Task = {
+    ...task,
+    id: "future-1",
+    dueDate: "2026-12-01",
+    status: "planned",
+  }
+  const done: Task = {
+    ...task,
+    id: "done-1",
+    dueDate: "2026-11-20",
+    status: "done",
+  }
+  const now = new Date("2026-11-27T12:00:00.000Z")
+  const candidates = getTasksDueForAutomation([openDue, future, done], [], now)
+  assert.equal(candidates.length, 1)
+  assert.equal(candidates[0].id, "due-1")
+})
+
+test("getTasksDueForAutomation skips tasks already successful today", () => {
+  const openDue: Task = {
+    ...task,
+    id: "due-2",
+    dueDate: "2026-11-26",
+    status: "in_progress",
+  }
+  const now = new Date("2026-11-27T12:00:00.000Z")
+  const runs = [{
+    id: "r1",
+    ruleId: "rule-x",
+    taskId: "due-2",
+    trigger: "task.due" as const,
+    executedAt: "2026-11-27T08:00:00.000Z",
+    result: "success" as const,
+    message: "ok",
+  }]
+  const candidates = getTasksDueForAutomation([openDue], runs, now)
+  assert.equal(candidates.length, 0)
+})
+
+test("task.due trigger executes matching rule", () => {
+  const dueTask: Task = {
+    ...task,
+    id: "due-3",
+    dueDate: "2026-11-27",
+    status: "planned",
+    priority: "medium",
+  }
+  const dueRule = rule({
+    id: "due-rule",
+    trigger: "task.due",
+    conditions: [{ field: "priority", operator: "is", value: "medium" }],
+    action: { type: "set_priority", value: "critical" },
+  })
+  const result = runTaskAutomations([dueTask], [dueRule], {
+    type: "task.due",
+    taskId: dueTask.id,
+    eventId: "event-due",
+    occurredAt: "2026-11-27T12:00:00.000Z",
+  })
+  assert.equal(result.tasks[0].priority, "critical")
+  assert.equal(result.runs[0].result, "success")
+  assert.equal(result.runs[0].trigger, "task.due")
 })
