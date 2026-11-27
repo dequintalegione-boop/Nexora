@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react"
 import { useNexora } from "@/lib/nexora/store"
-import { DEFAULT_TASK_TABLE_COLUMNS, TASK_TABLE_COLUMN_LABELS, useUI, type TaskTableColumn } from "@/lib/nexora/ui-store"
+import { DEFAULT_TASK_TABLE_COLUMNS, TASK_TABLE_COLUMN_LABELS, useUI, type TaskOccurrenceContext, type TaskTableColumn } from "@/lib/nexora/ui-store"
 import {
   getTaskStatusLabels,
   getTaskPriorityLabels,
@@ -11,7 +11,6 @@ import {
 import { addDays, isoDate } from "@/lib/nexora/dates"
 import { expandTasksForView, getTaskOccurrenceViewRange, type TaskViewItem } from "@/lib/nexora/task-view-occurrences"
 import type { TaskStatus, Priority } from "@/lib/nexora/types"
-import type { TaskOccurrenceContext } from "@/lib/nexora/ui-store"
 import { Button, Card, Input, Select, Badge } from "./ui"
 import { QuickTaskInput, buildQuickTaskSuggestions } from "./quick-task-input"
 import { getDependencyState, getTaskChildren } from "@/lib/nexora/task-logic"
