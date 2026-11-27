@@ -1,7 +1,7 @@
 import { useNexora } from "@/lib/nexora/store"
 import { useUI } from "@/lib/nexora/ui-store"
 import { getTaskStatusLabels, getTaskPriorityLabels } from "@/lib/nexora/copy"
-import type { RecurrenceFrequency } from "@/lib/nexora/types"
+import type { RecurrenceFrequency, TaskReminder } from "@/lib/nexora/types"
 import type { TaskStatus, Priority } from "@/lib/nexora/types"
 import { Button, Card, Input, Select, Textarea } from "./ui"
 import { getDependencyState, getTaskChildren } from "@/lib/nexora/task-logic"
@@ -148,6 +148,77 @@ export function TaskDialog() {
               onChange={(e) => updateTask(task.id, { contexts: e.target.value.split(",").map((context) => context.trim()).filter(Boolean) })}
             />
           </div>
+        </div>
+
+        <div className="space-y-3 rounded-lg border border-white/10 p-3">
+          <div>
+            <label className="text-xs text-muted">Напоминания</label>
+            <p className="mt-1 text-xs text-muted">Добавьте уведомление перед началом, сроком или на точное время.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="secondary" onClick={() => updateTask(task.id, {
+              reminders: [...(task.reminders ?? []), {
+                id: `reminder_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                minutesBefore: 15,
+                anchor: "start",
+                enabled: true,
+              }],
+            })}>За 15 мин. до начала</Button>
+            <Button size="sm" variant="secondary" onClick={() => updateTask(task.id, {
+              reminders: [...(task.reminders ?? []), {
+                id: `reminder_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                minutesBefore: 1440,
+                anchor: "due",
+                enabled: true,
+              }],
+            })}>За день до срока</Button>
+            <Button size="sm" variant="secondary" onClick={() => updateTask(task.id, {
+              reminders: [...(task.reminders ?? []), {
+                id: `reminder_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                at: "",
+                enabled: true,
+              }],
+            })}>Точное время</Button>
+          </div>
+          <div className="space-y-2">
+            {(task.reminders ?? []).map((reminder) => (
+              <div key={reminder.id} className="flex items-center gap-2">
+                {reminder.at !== undefined ? (
+                  <Input
+                    className="min-w-0 flex-1"
+                    type="datetime-local"
+                    value={reminder.at}
+                    onChange={(event) => updateTask(task.id, {
+                      reminders: task.reminders?.map((item) => item.id === reminder.id
+                        ? { ...item, at: event.target.value || undefined }
+                        : item),
+                    })}
+                  />
+                ) : (
+                  <span className="min-w-0 flex-1 text-sm">
+                    За {reminder.minutesBefore ?? 0} мин. до {reminder.anchor === "due" ? "срока" : "начала"}
+                  </span>
+                )}
+                <label className="flex items-center gap-1 text-xs text-muted">
+                  <input
+                    type="checkbox"
+                    checked={reminder.enabled}
+                    onChange={(event) => updateTask(task.id, {
+                      reminders: task.reminders?.map((item) => item.id === reminder.id
+                        ? { ...item, enabled: event.target.checked, lastTriggeredAt: undefined }
+                        : item),
+                    })}
+                  />
+                  Вкл.
+                </label>
+                <Button size="sm" variant="ghost" onClick={() => updateTask(task.id, {
+                  reminders: task.reminders?.filter((item) => item.id !== reminder.id),
+                })}>Удалить</Button>
+              </div>
+            ))}
+            {(task.reminders ?? []).length === 0 && <p className="text-xs text-muted">Напоминания пока не добавлены</p>}
+          </div>
+          <p className="text-xs text-muted">Для доставки нужны разрешение браузера и открытое приложение Nexora. После закрытия браузера локальный таймер не работает.</p>
         </div>
 
         <div className="space-y-2 rounded-lg border border-white/10 p-3">
