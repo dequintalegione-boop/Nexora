@@ -45,6 +45,7 @@ export type SavedTaskView = {
   layout: "list" | "table" | "kanban"
   columns?: TaskTableColumn[]
   advancedFilter?: TaskFilterGroup
+  kanbanGroupBy?: KanbanGroupBy
 }
 
 type UIState = {
