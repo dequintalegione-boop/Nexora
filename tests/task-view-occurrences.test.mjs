@@ -22,7 +22,7 @@ test("task view occurrence windows stay bounded and follow quick filters", () =>
     end: "2026-01-22",
   })
   assert.deepEqual(getTaskOccurrenceViewRange("2026-01-15", "overdue"), {
-    start: "2025-12-16",
+    start: "2025-01-15",
     end: "2026-01-14",
   })
   assert.deepEqual(getTaskOccurrenceViewRange("2026-01-15", "all"), {
