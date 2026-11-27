@@ -108,6 +108,39 @@ export function SettingsPage() {
         <Button size="sm" variant="secondary" onClick={() => updateSettings({ taskStatusLabels: {}, taskPriorityLabels: {} })}>Сбросить названия</Button>
       </Card>
       <Card className="p-4 space-y-3">
+        <div>
+          <h2 className="font-medium">Уведомления</h2>
+          <p className="mt-1 text-xs text-muted">
+            Nexora будет проверять напоминания и показывать системные уведомления, пока приложение открыто.
+            Для работы нужно разрешение браузера.
+          </p>
+        </div>
+        {typeof window !== "undefined" && "Notification" in window ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {settings.notificationsEnabled ? (
+              <Button variant="secondary" onClick={() => updateSettings({ notificationsEnabled: false })}>
+                Отключить уведомления
+              </Button>
+            ) : (
+              <Button onClick={async () => {
+                const permission = await Notification.requestPermission()
+                updateSettings({ notificationsEnabled: permission === "granted" })
+              }}>
+                Разрешить уведомления
+              </Button>
+            )}
+            <span className="text-xs text-muted">
+              Статус браузера: {Notification.permission === "granted" ? "разрешено" : Notification.permission === "denied" ? "запрещено" : "не запрошено"}
+            </span>
+          </div>
+        ) : (
+          <p className="text-xs text-amber-400">Этот браузер не поддерживает системные уведомления.</p>
+        )}
+        <p className="text-xs text-muted">
+          Важно: локальные напоминания не срабатывают после полного закрытия браузера. Фоновая доставка через Push потребует отдельного сервера.
+        </p>
+      </Card>
+      <Card className="p-4 space-y-3">
         <h2 className="font-medium">Данные</h2>
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={exportBackup}>Экспорт бэкапа</Button>
