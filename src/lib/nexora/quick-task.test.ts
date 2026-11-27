@@ -83,3 +83,70 @@ test("keeps unsupported relative month deadlines in the title", () => {
   assert.equal(draft.title, "Обсудить до через 25 месяцев")
   assert.equal(draft.dueDate, undefined)
 })
+
+test("parses weekday as scheduled date", () => {
+  // 2026-11-27 is Friday → next Monday is 2026-11-30
+  const draft = parseQuickTaskInput("Созвон в понедельник", "2026-11-27")
+  assert.equal(draft.title, "Созвон")
+  assert.equal(draft.scheduledDate, "2026-11-30")
+})
+
+test("parses due weekday", () => {
+  const draft = parseQuickTaskInput("Сдать отчёт до пятницы", "2026-11-27")
+  assert.equal(draft.title, "Сдать отчёт")
+  assert.equal(draft.dueDate, "2026-12-04")
+})
+
+test("parses named month date as scheduled", () => {
+  const draft = parseQuickTaskInput("Встреча 15 декабря", "2026-11-27")
+  assert.equal(draft.title, "Встреча")
+  assert.equal(draft.scheduledDate, "2026-12-15")
+})
+
+test("parses named month date as due", () => {
+  const draft = parseQuickTaskInput("Оплатить до 10 января", "2026-11-27")
+  assert.equal(draft.title, "Оплатить")
+  assert.equal(draft.dueDate, "2027-01-10")
+})
+
+test("parses duration estimate in minutes", () => {
+  const draft = parseQuickTaskInput("Написать письмо 30 минут", "2026-11-27")
+  assert.equal(draft.title, "Написать письмо")
+  assert.equal(draft.estimatedMinutes, 30)
+})
+
+test("parses duration estimate in hours", () => {
+  const draft = parseQuickTaskInput("Подготовить доклад 2ч !высокий", "2026-11-27")
+  assert.equal(draft.title, "Подготовить доклад")
+  assert.equal(draft.estimatedMinutes, 120)
+  assert.equal(draft.priority, "high")
+})
+
+test("parses project marker", () => {
+  const draft = parseQuickTaskInput("Черновик +Nexora #docs", "2026-11-27")
+  assert.equal(draft.title, "Черновик")
+  assert.equal(draft.projectTitle, "Nexora")
+  assert.deepEqual(draft.tags, ["docs"])
+})
+
+test("parses status marker", () => {
+  const draft = parseQuickTaskInput("Проверить *в_работе", "2026-11-27")
+  assert.equal(draft.title, "Проверить")
+  assert.equal(draft.status, "in_progress")
+})
+
+test("combined NLP tokens leave clean title", () => {
+  const draft = parseQuickTaskInput(
+    "Позвонить клиенту завтра в 14:30 45 минут !высокий #продажи @офис +CRM *planned",
+    "2026-11-27",
+  )
+  assert.equal(draft.title, "Позвонить клиенту")
+  assert.equal(draft.scheduledDate, "2026-11-28")
+  assert.equal(draft.startAt, "2026-11-28T14:30")
+  assert.equal(draft.estimatedMinutes, 45)
+  assert.equal(draft.priority, "high")
+  assert.deepEqual(draft.tags, ["продажи"])
+  assert.deepEqual(draft.contexts, ["офис"])
+  assert.equal(draft.projectTitle, "CRM")
+  assert.equal(draft.status, "planned")
+})
